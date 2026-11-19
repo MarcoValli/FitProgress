@@ -11,7 +11,7 @@ Confronto delle foto dei progressi in palestra, tutto in una pagina HTML.
 
 ## Cosa fa
 
-- Allinea le foto della stessa posa (di fronte, di lato, di schiena) con 2 o 3 punti. In automatico trova i punti anche nella prima foto e tu li controlli; in manuale scegli quali punti usare e li metti nella prima foto, le altre si allineano da sole.
+- Riconosce da solo la posa (di fronte, di lato, di schiena), trova i punti per allineare le foto e prende le misure dalla sagoma della persona. Se qualcosa è fuori posto lo trascini. In manuale scegli quali punti usare e li metti nella prima foto, le altre si allineano da sole.
 - Confronta le foto con cursore, affiancate, sfumate o differenze.
 - Misura le larghezze scelte nelle impostazioni (spalle, vita, fianchi…) e la definizione muscolare, con un margine d'errore.
 - Propone una foto di riferimento e una guida per rifare le foto sempre uguali.
