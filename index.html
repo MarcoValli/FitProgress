@@ -75,20 +75,25 @@
   .segmented button[aria-selected="true"], .segmented button[aria-pressed="true"] { background: var(--hover); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.4); }
   .segmented button:disabled { opacity: .35; cursor: default; }
   .segmented.full { display: flex; }
-  .segmented.full button { flex: 1 1 auto; padding: 0 8px; }
+  .segmented.full button { flex: 1 1 auto; min-width: 0; padding: 0 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-  .field { display: grid; gap: 6px; }
+  .field { display: grid; gap: 6px; min-width: 0; }
   .field > span { color: var(--muted); font-size: 12px; }
-  .input { height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--border-strong); background: var(--raised); width: 100%; }
+  .input { height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--border-strong); background: var(--raised); width: 100%; min-width: 0; max-width: 100%; }
+  /* Le date su iPhone hanno una larghezza minima propria e uscivano sul campo accanto: così seguono la colonna */
+  input[type="date"].input { -webkit-appearance: none; appearance: none; display: block; line-height: 30px; }
+  input[type="date"].input::-webkit-date-and-time-value { text-align: left; margin: 0; }
+  input[type="date"].input::-webkit-datetime-edit { padding: 0; }
   select.input { appearance: none; padding-right: 28px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239b9ba5' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; }
-  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .row2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
 
   input[type="range"] { -webkit-appearance: none; appearance: none; width: 100%; height: 20px; background: transparent; cursor: pointer; }
   input[type="range"]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: var(--border-strong); }
   input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; margin-top: -6px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.5); }
   input[type="range"]::-moz-range-track { height: 4px; border-radius: 2px; background: var(--border-strong); }
   input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; border: 0; border-radius: 50%; background: #fff; }
-  .slider { display: grid; grid-template-columns: 74px 1fr 42px; align-items: center; gap: 8px; color: var(--muted); }
+  .slider { display: grid; grid-template-columns: 74px minmax(0, 1fr) 42px; align-items: center; gap: 8px; color: var(--muted); }
+  .slider > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .slider output { text-align: right; font-variant-numeric: tabular-nums; color: var(--text); }
 
   .switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; }
@@ -112,9 +117,20 @@
   .brand-mark { width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; background: linear-gradient(135deg, #4f8cff, #8b5cf6); color: #fff; }
   .brand-mark svg { width: 15px; height: 15px; }
   .spacer { flex: 1; }
+  /* Schede e Salva: sul computer stanno nella barra in alto (Salva vicino ad Aggiungi foto), sul telefono in basso */
+  .tabbar { display: contents; }
+  #saveBtn { order: 1; }
+  #addBtn { order: 2; }
 
   .layout { height: calc(100vh - 56px); display: grid; grid-template-columns: 272px minmax(0, 1fr) 340px; }
   .layout.is-empty { grid-template-columns: 1fr; }
+  /* Computer con finestra stretta: colonne laterali più strette, la foto in mezzo resta grande abbastanza */
+  @media (min-width: 861px) and (max-width: 1100px) {
+    .layout { grid-template-columns: 200px minmax(0, 1fr) 300px; }
+    .topbar { gap: 10px; }
+    .topbar .lbl { display: none; }
+    #tipsBtn, #addBtn { width: 32px; padding: 0; }
+  }
   .layout.is-empty .sidebar, .layout.is-empty .inspector { display: none; }
 
   .sidebar { border-right: 1px solid var(--border); background: var(--panel); overflow-y: auto; padding: 12px 10px 24px; }
@@ -201,7 +217,10 @@
   #refBtn[aria-pressed="true"] svg { fill: currentColor; }
 
   /* ---------- confronto: foto Prima e Dopo, vista ---------- */
-  .cmpbar { width: 100%; max-width: 600px; display: grid; gap: 10px; }
+  .cmpbar { width: 100%; max-width: 600px; min-width: 0; display: grid; gap: 10px; container: cmp / inline-size; }
+  /* Vista (Cursore, Affiancate…): se lo spazio è poco i pulsanti si stringono, poi vanno su due righe */
+  @container cmp (max-width: 340px) { .segmented.full button { padding: 0 4px; font-size: 12px; } }
+  @container cmp (max-width: 280px) { .segmented.full { display: grid; grid-template-columns: 1fr 1fr; } }
   .cmp-pick { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 6px; }
   .cmp-slot { display: flex; align-items: center; gap: 10px; min-height: 64px; padding: 6px 10px 6px 6px; border-radius: 12px; border: 1px solid var(--border-strong); background: var(--raised); text-align: left; cursor: pointer; min-width: 0; }
   .cmp-slot:hover { background: var(--hover); }
@@ -242,6 +261,10 @@
   .sheet-grid.start-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .sheet-why { color: var(--faint); font-size: 11.5px; line-height: 1.35; padding-left: 2px; }
   .start-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 16px 3px 0; }
+  .start-actions .start-ok { margin-left: auto; min-width: 96px; }
+  /* La foto scelta: bordo e segno di spunta */
+  .sheet-item[aria-pressed="true"]::after { content: "✓"; position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; border-radius: 12px; display: grid; place-items: center; background: var(--accent); color: #fff; font-weight: 700; font-size: 13px; }
+  .sheet-item[aria-pressed="true"] .sheet-ref { display: none; }
   .start-body > .note { margin: 0 3px 12px; }
   .start-foot { margin: 12px 3px 0 !important; }
 
@@ -404,7 +427,11 @@
     body { padding-bottom: calc(62px + env(safe-area-inset-bottom)); }
     .topbar { position: sticky; top: 0; z-index: 5; height: auto; gap: 8px; padding: max(8px, env(safe-area-inset-top)) 12px 8px; }
     /* Le sezioni diventano la barra in basso, a portata di pollice */
-    .topbar nav.tabs { position: fixed; z-index: 20; left: 0; right: 0; bottom: 0; display: flex; gap: 0; padding: 4px 6px max(4px, env(safe-area-inset-bottom)); border: 0; border-top: 1px solid var(--border); border-radius: 0; background: rgba(21, 21, 24, .96); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+    .topbar .tabbar { position: fixed; z-index: 20; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 4px; padding: 4px 8px max(4px, env(safe-area-inset-bottom)) 6px; border-top: 1px solid var(--border); background: rgba(21, 21, 24, .96); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+    .topbar nav.tabs { flex: 1; min-width: 0; display: flex; gap: 0; padding: 0; border: 0; border-radius: 0; background: transparent; }
+    /* Salva: pulsante pieno, sempre in vista accanto alle schede */
+    .topbar .save-btn { flex: 0 0 auto; width: 64px; height: 50px; padding: 0; flex-direction: column; gap: 3px; border-radius: 14px; font-size: 11px; }
+    .topbar .save-btn svg { width: 20px; height: 20px; }
     .topbar nav.tabs button { flex: 1; height: 54px; flex-direction: column; gap: 3px; padding: 0 2px; border-radius: 10px; font-size: 11px; font-weight: 600; white-space: nowrap; }
     .topbar nav.tabs button svg { display: block; width: 22px; height: 22px; }
     .topbar nav.tabs button[aria-selected="true"] { background: transparent; box-shadow: none; color: var(--accent); }
@@ -468,8 +495,16 @@
     .card { padding: 14px; scroll-margin-top: 110px; }
     .log-grid { grid-template-columns: 1fr 1fr; }
     .log-list .btn { width: 40px; height: 40px; }
+    /* Finestre piccole (File pronto): dal basso, non a tutto schermo */
+    .dialog.small { height: fit-content; max-height: 90dvh; margin: auto 0 0; border-radius: 18px 18px 0 0; }
+    .dialog.small footer { padding-bottom: max(14px, env(safe-area-inset-bottom)); }
+    .dialog.small form { height: auto; }
+    .dialog.small footer .btn { flex: 1; height: 44px; }
 
   }
+  @media (min-width: 861px) { .dialog.small { width: min(460px, calc(100vw - 32px)); } }
+  .dialog.small footer { flex-wrap: wrap; }
+  #saveBtn[aria-busy="true"] { opacity: .6; pointer-events: none; }
 
   @keyframes sheet-up { from { transform: translateY(40px); opacity: .4; } to { transform: none; opacity: 1; } }
   @media (prefers-reduced-motion: reduce) { .sheet[open] { animation: none; } }
@@ -508,13 +543,16 @@
 
 <header class="topbar">
   <div class="brand"><span class="brand-mark"><svg class="icon"><use href="#i-logo"/></svg></span>FitProgress</div>
-  <!-- Sul telefono diventa la barra in basso -->
-  <nav class="segmented tabs" role="tablist" aria-label="Sezione">
-    <button role="tab" id="tabPrepare" aria-selected="true"><svg class="icon"><use href="#i-target"/></svg><span>Prepara</span></button>
-    <button role="tab" id="tabCompare" aria-selected="false" disabled><svg class="icon"><use href="#i-split"/></svg><span>Confronta</span></button>
-    <button role="tab" id="tabGuide" aria-selected="false" disabled><svg class="icon"><use href="#i-camera"/></svg><span>Guida</span></button>
-    <button role="tab" id="tabLog" aria-selected="false" title="Peso e misure col metro"><svg class="icon"><use href="#i-book"/></svg><span>Diario</span></button>
-  </nav>
+  <!-- Sul telefono diventa la barra in basso, con Salva a destra -->
+  <div class="tabbar">
+    <nav class="segmented tabs" role="tablist" aria-label="Sezione">
+      <button role="tab" id="tabPrepare" aria-selected="true"><svg class="icon"><use href="#i-target"/></svg><span>Prepara</span></button>
+      <button role="tab" id="tabCompare" aria-selected="false" disabled><svg class="icon"><use href="#i-split"/></svg><span>Confronta</span></button>
+      <button role="tab" id="tabGuide" aria-selected="false" disabled><svg class="icon"><use href="#i-camera"/></svg><span>Guida</span></button>
+      <button role="tab" id="tabLog" aria-selected="false" title="Peso e misure col metro"><svg class="icon"><use href="#i-book"/></svg><span>Diario</span></button>
+    </nav>
+    <button type="button" class="btn primary save-btn" id="saveBtn" title="Salva i progressi in un file"><svg class="icon"><use href="#i-download"/></svg><span>Salva</span></button>
+  </div>
   <div class="spacer"></div>
   <button class="btn ghost" id="tipsBtn" title="Come fare le foto"><svg class="icon"><use href="#i-camera"/></svg><span class="lbl">Come fare le foto</span></button>
   <button class="btn ghost icon-only" id="settingsBtn" aria-label="Impostazioni e salvataggio" title="Impostazioni e salvataggio"><svg class="icon"><use href="#i-gear"/></svg></button>
@@ -741,6 +779,19 @@
     <header><h2 id="keptTitle">Foto salvate</h2><p class="intro" id="keptIntro"></p></header>
     <div class="body" id="keptBody"></div>
     <footer id="keptFoot"></footer>
+  </form>
+</dialog>
+
+<!-- File dei progressi pronto: sul telefono il foglio di condivisione si apre solo con un tocco -->
+<dialog class="dialog small" id="saveDialog" aria-labelledby="saveDialogTitle">
+  <form method="dialog">
+    <header><h2 id="saveDialogTitle">File pronto</h2><p class="intro" id="saveDialogText"></p></header>
+    <div class="body"><p class="note">Tocca Salva il file e scegli dove metterlo. Su iPhone: Salva su File › Sul mio iPhone (in iCloud Drive finirebbe online).</p></div>
+    <footer>
+      <button class="btn" value="cancel">Annulla</button>
+      <button class="btn" type="button" id="saveDownload">Scarica</button>
+      <button class="btn primary" type="button" id="saveShare"><svg class="icon"><use href="#i-download"/></svg>Salva il file</button>
+    </footer>
   </form>
 </dialog>
 
@@ -1191,29 +1242,44 @@ async function addFiles(files) {
 
 const MAX_REFS = 2; // per posa
 // Due archivi: "refs" per i riferimenti (la stella), "kept" per le foto salvate per il confronto
-// (partenza e Dopo, vedi più sotto). Stessa forma: { key, name, date, stamp, blob, savedAt }
+// (partenza e Dopo, vedi più sotto). Stessa forma: { key, name, date, stamp, data, type, savedAt }.
+// L'immagine si salva come byte (data, ArrayBuffer) e non come Blob: Safari in alcuni casi (per esempio in
+// navigazione privata) rifiuta i Blob in IndexedDB, e le foto salvate sparivano senza avviso.
+// I record di prima hanno ancora blob: si leggono lo stesso (readRecord)
 function idb(mode, fn, store = "refs") {
   return new Promise((resolve, reject) => {
     const open = indexedDB.open("progressi", 2);
     open.onupgradeneeded = () => {
       for (const s of ["refs", "kept"]) if (!open.result.objectStoreNames.contains(s)) open.result.createObjectStore(s, { keyPath: "key" });
     };
-    open.onerror = () => reject(open.error);
+    open.onerror = () => reject(open.error || new Error("idb"));
     open.onsuccess = () => {
-      const tx = open.result.transaction(store, mode);
-      const req = fn(tx.objectStore(store));
-      tx.oncomplete = () => { open.result.close(); resolve(req?.result); };
-      tx.onerror = () => { open.result.close(); reject(tx.error); };
+      const db = open.result;
+      let tx, req;
+      try {
+        tx = db.transaction(store, mode);
+        req = fn(tx.objectStore(store));
+      } catch (e) { db.close(); reject(e); return; }
+      tx.oncomplete = () => { db.close(); resolve(req?.result); };
+      tx.onerror = tx.onabort = () => { db.close(); reject(tx.error || new Error("idb")); };
     };
   });
 }
+// Record da salvare: l'immagine diventa byte
+async function makeRecord({ key, name, date, stamp }, blob) {
+  return { key, name, date: date || "", stamp: stamp || "", data: await blob.arrayBuffer(), type: blob.type || "image/jpeg", savedAt: Date.now() };
+}
+const putRecord = async (store, meta, blob) => { const rec = await makeRecord(meta, blob); return idb("readwrite", (s) => s.put(rec), store); };
+// Record letto: blob, che sia salvato come byte o (versioni di prima) come Blob
+const readRecord = (r) => r && (r.data ? { ...r, blob: new Blob([r.data], { type: r.type || "image/jpeg" }), data: undefined } : r);
+const allRecords = async (store) => ((await idb("readonly", (s) => s.getAll(), store)) || []).map(readRecord).filter((r) => r?.blob);
 
 async function setRef(p, on) {
   try {
     if (on) {
       const blob = p.baseBlob;
       const before = anchorsFor(p.pose);
-      await idb("readwrite", (s) => s.put({ key: p.key, name: p.name, date: p.date, stamp: p.stamp, blob, savedAt: Date.now() }));
+      await putRecord("refs", p, blob);
       state.refKeys.add(p.key);
       p.ref = true;
       // Con un punto di partenza nuovo si rifanno le foto allineate in automatico ma incerte
@@ -1234,8 +1300,8 @@ async function setRef(p, on) {
 // Riferimenti e foto salvate per il confronto: quelle che non hai aperto diventano foto dell'elenco
 async function loadSaved() {
   let refs = [], kept = [];
-  try { refs = (await idb("readonly", (s) => s.getAll())) || []; } catch { return; }
-  try { kept = (await idb("readonly", (s) => s.getAll(), "kept")) || []; } catch { /* niente salvato */ }
+  try { refs = await allRecords("refs"); } catch { return; }
+  try { kept = await allRecords("kept"); } catch { /* niente salvato */ }
   state.keptKeys = new Set(kept.map((r) => r.key));
   const refKeys = new Set(refs.map((r) => r.key));
   for (const r of [...refs, ...kept.filter((x) => !refKeys.has(x.key))]) {
@@ -1330,7 +1396,7 @@ function updateKept() {
         if (state.keptKeys.has(key)) continue;
         const p = state.photos.find((q) => q.key === key);
         if (!p) continue;
-        await idb("readwrite", (s) => s.put({ key: p.key, name: p.name, date: p.date, stamp: p.stamp, blob: p.baseBlob, savedAt: Date.now() }), "kept");
+        await putRecord("kept", p, p.baseBlob);
         state.keptKeys.add(key);
         navigator.storage?.persist?.().catch(() => {});
       }
@@ -3000,7 +3066,8 @@ $("#swapBtn").addEventListener("click", () => { [state.selA, state.selB] = [stat
 // Si apre da sola quando hai aggiunto foto e una posa con almeno 2 foto pronte non ha ancora la partenza;
 // a mano dal cassetto (Prima) e da Prepara. Una posa alla volta
 const startSheet = $("#startSheet");
-let startQueue = [], startAll = false, startManual = false;
+// startPick: la foto toccata, che diventa la partenza solo con OK
+let startQueue = [], startAll = false, startManual = false, startPick = null;
 
 // Fra le più vecchie (il primo terzo, almeno 3) le tre più adatte: dritte, in linea con le altre, senza mani davanti
 function suggestStart(k) {
@@ -3019,6 +3086,7 @@ function openStart(poses, manual) {
   if (!startQueue.length || startSheet.open) return;
   startManual = manual;
   startAll = false;
+  startPick = startOf(startQueue[0])?.key || null;
   renderStart();
   startSheet.showModal();
   // Il focus sulla foto consigliata, non sulla X
@@ -3033,31 +3101,42 @@ function askStart() {
 function renderStart() {
   const k = startQueue[0], cur = startOf(k), label = POSES[k].label.toLowerCase();
   $("#startTitle").textContent = `Foto di partenza · ${label}`;
-  const item = (p, tagHtml = "", why = "") => `<button type="button" class="sheet-item" data-start="${esc(p.key)}" aria-pressed="${p === cur}" aria-label="Usa ${esc(labelOf(p))} come foto di partenza">`
+  const item = (p, tagHtml = "", why = "") => `<button type="button" class="sheet-item" data-start="${esc(p.key)}" aria-pressed="${p.key === startPick}" aria-label="Scegli ${esc(labelOf(p))}">`
     + `<img alt="" src="${p.thumb}">${tagHtml}${p.ref ? '<span class="sheet-ref" title="Riferimento"><svg class="icon"><use href="#i-star"/></svg></span>' : ""}`
     + `<span class="sheet-date">${esc(p.date ? fmtDate(p.date) : "Senza data")}</span>${why ? `<span class="sheet-why">${esc(why)}</span>` : ""}</button>`;
   const next = startQueue.length > 1 ? ` Poi: ${startQueue.slice(1).map((q) => POSES[q].label.toLowerCase()).join(", ")}.` : "";
   const body = startAll
     ? `<p class="note">Tutte le foto ${esc(label)} pronte per il confronto, dalla più vecchia.${next}</p>
       <div class="sheet-grid">${readyFor(k).map((p) => item(p, p === cur ? '<span class="sheet-tag on">Partenza</span>' : "")).join("")}</div>`
-    : `<p class="note">Il Prima di tutti i confronti ${esc(label)}. Ti propongo queste fra le più vecchie: scegline una.${next}</p>
+    : `<p class="note">Il Prima di tutti i confronti ${esc(label)}. Ti propongo queste fra le più vecchie: scegline una e premi OK.${next}</p>
       <div class="sheet-grid start-grid">${suggestStart(k).map((s) => item(s.p, s.best ? '<span class="sheet-tag on">Consigliata</span>' : "", s.why)).join("")}</div>`;
   $("#startBody").className = "sheet-body start-body";
   $("#startBody").innerHTML = body + `<div class="start-actions">
       ${startAll ? '<button type="button" class="btn" id="startBack">Torna alle proposte</button>' : '<button type="button" class="btn" id="startAllBtn">Scegli tu fra tutte</button>'}
       <button type="button" class="btn ghost" id="startLater">${startManual ? "Annulla" : "Più tardi"}</button>
+      <button type="button" class="btn primary start-ok" id="startOk">OK</button>
     </div>
     <p class="note start-foot">Resta salvata in questo browser e nel file dei progressi, insieme al Dopo più adatto: riaprendo la pagina il confronto c'è già, anche senza le foto.</p>`;
-  $("#startBody").querySelectorAll("[data-start]").forEach((b) => b.addEventListener("click", async () => {
-    const p = state.photos.find((q) => q.key === b.dataset.start);
+  const sync = () => {
+    $("#startBody").querySelectorAll("[data-start]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.start === startPick));
+    $("#startOk").disabled = !startPick;
+    $("#startOk").title = startPick ? "" : "Tocca prima una foto";
+  };
+  sync();
+  // Il tocco sceglie, OK conferma
+  $("#startBody").querySelectorAll("[data-start]").forEach((b) => b.addEventListener("click", () => { startPick = b.dataset.start; sync(); }));
+  $("#startOk").addEventListener("click", async () => {
+    const p = state.photos.find((q) => q.key === startPick);
     if (!p) return;
+    $("#startOk").disabled = true;
     await setStart(p);
     startQueue.shift();
     if (!startQueue.length) { startSheet.close(); return; }
     startAll = false;
+    startPick = startOf(startQueue[0])?.key || null;
     renderStart();
     $("#startBody [data-start]")?.focus({ preventScroll: true });
-  }));
+  });
   $("#startAllBtn")?.addEventListener("click", () => { startAll = true; renderStart(); });
   $("#startBack")?.addEventListener("click", () => { startAll = false; renderStart(); });
   $("#startLater").addEventListener("click", () => startSheet.close());
@@ -3073,8 +3152,8 @@ const b64Size = (n) => Math.ceil(n / 3) * 4 + 300; // immagine dentro il file, c
 const mbText = (n) => n < 1e5 ? "meno di 0,1 MB" : `${num(n / 1e6, n < 1e7 ? 1 : 0)} MB`;
 // Tutte le immagini salvate, una per foto: { key, name, date, stamp, blob, ref, kept }
 async function savedImages() {
-  const refs = await idb("readonly", (s) => s.getAll()).catch(() => []) || [];
-  const kp = await idb("readonly", (s) => s.getAll(), "kept").catch(() => []) || [];
+  const refs = await allRecords("refs").catch(() => []);
+  const kp = await allRecords("kept").catch(() => []);
   const map = new Map(refs.map((r) => [r.key, { ...r, ref: true, kept: false }]));
   for (const r of kp) {
     if (map.has(r.key)) map.get(r.key).kept = true;
@@ -3929,7 +4008,7 @@ function openSettings(first = false) {
     }));
     $("#presetBtn").addEventListener("click", () => { draft.measures = presetMeasures(draft.who, draft.framing); render(); });
     $("#defInput").addEventListener("change", (e) => { draft.definition = e.target.checked; render(); });
-    $("#exportBtn").addEventListener("click", async () => { await exportProgress(); render(); });
+    $("#exportBtn").addEventListener("click", async () => { await saveProgress(); render(); });
     // Quante foto salvate e quanto pesano: si legge dal browser, poi si scrive (se la finestra è ancora lì)
     savedImages().then((items) => {
       const line = $("#keptLine");
@@ -4034,19 +4113,72 @@ async function exportProgress() {
   const json = JSON.stringify({ ...base, refs, kept: keptOut });
   const file = new File([json], `fitprogress-${todayISO()}.json`, { type: "application/json" });
   const n = Object.keys(photos).length;
-  // Sul telefono si apre il foglio di condivisione (Salva su File, AirDrop…); sul computer si scarica
+  const what = savedWhat(n, diary.length, items.length);
+  const done = (how) => {
+    try { localStorage.setItem(LAST_EXPORT_KEY, String(Date.now())); } catch { /* spazio pieno */ }
+    toast(`${how} i progressi di ${what}${heavy ? ` · file di ${mbText(json.length)}: pesante da spostare` : ""}`);
+    return true;
+  };
+  // Sul telefono il foglio di condivisione (Salva su File, AirDrop…). Il browser lo apre solo subito dopo un tocco:
+  // preparare il file (leggere le foto salvate) richiede tempo, quindi serve un secondo tocco su "Salva il file"
   if (MOBILE && navigator.canShare?.({ files: [file] })) {
-    try { await navigator.share({ files: [file], title: "FitProgress" }); } catch (e) { if (e.name === "AbortError") return; }
-  } else {
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(file);
-    a.download = file.name;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    const how = await askShare(file, what);
+    if (how === "share") return done("Salvati");
+    if (how === "download") { downloadFile(file); return done("Scaricati"); }
+    return false;
   }
-  try { localStorage.setItem(LAST_EXPORT_KEY, String(Date.now())); } catch { /* spazio pieno */ }
-  toast(`Salvati i progressi di ${savedWhat(n, diary.length, items.length)}${heavy ? ` · file di ${mbText(json.length)}: pesante da spostare` : ""}`);
+  downloadFile(file);
+  return done("Scaricati");
 }
+function downloadFile(file) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(file);
+  a.download = file.name;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+}
+// Finestra "File pronto": navigator.share parte dentro il tocco su Salva il file. Risponde "share", "download" o "cancel"
+function askShare(file, what) {
+  const dlg = $("#saveDialog");
+  $("#saveDialogText").textContent = `${file.name} · ${mbText(file.size)} · ${what}.`;
+  dlg.returnValue = "";
+  dlg.showModal();
+  $("#saveShare").focus();
+  return new Promise((resolve) => {
+    let result = "cancel";
+    const finish = (r) => { result = r; dlg.close(); };
+    $("#saveShare").onclick = () => {
+      navigator.share({ files: [file], title: "FitProgress" }).then(
+        () => finish("share"),
+        // Chiuso il foglio senza scegliere: la finestra resta, puoi riprovare. Se il telefono rifiuta, si scarica
+        (e) => { if (e.name !== "AbortError") finish("download"); },
+      );
+    };
+    $("#saveDownload").onclick = () => finish("download");
+    dlg.onclose = () => { dlg.onclose = null; resolve(result); };
+  });
+}
+// Pulsante Salva (barra delle schede): prepara il file e lo salva. Uno alla volta
+let saving = false;
+async function saveProgress() {
+  if (saving) return false;
+  saving = true;
+  $("#saveBtn").setAttribute("aria-busy", "true");
+  toast("Preparo il file dei progressi…");
+  try { return await exportProgress(); } catch { toast("Non riesco a preparare il file dei progressi"); return false; } finally {
+    saving = false;
+    $("#saveBtn").removeAttribute("aria-busy");
+    updateSaveBtn();
+  }
+}
+// Il suggerimento del pulsante dice quando hai salvato l'ultima volta
+function updateSaveBtn() {
+  const t = +localStorage.getItem(LAST_EXPORT_KEY), days = t ? Math.floor((Date.now() - t) / 864e5) : -1;
+  $("#saveBtn").title = days < 0 ? "Salva i progressi in un file: non l'hai ancora fatto" : `Salva i progressi in un file (ultimo salvataggio: ${days === 0 ? "oggi" : days === 1 ? "ieri" : `${days} giorni fa`})`;
+}
+$("#saveBtn").addEventListener("click", saveProgress);
 // "12 foto (3 con l'immagine) e 5 misurazioni": le foto si dicono sempre, tranne se c'è solo il diario
 const countOf = (n, one, many) => n === 1 ? `1 ${one}` : `${n} ${many}`;
 function savedWhat(photos, entries, images) {
@@ -4127,13 +4259,16 @@ async function importProgress(file) {
   const refImage = new Map(allRefs.map((r) => [r.key, r.image]));
   const keptIn = (Array.isArray(data.kept) ? data.kept : []).filter((r) => validKey(r?.key)).slice(0, 1000)
     .map((r) => ({ ...r, image: isImage(r.image) ? r.image : refImage.get(r.key) })).filter((r) => r.image);
-  const record = async (r) => ({ key: r.key, name: String(r.name || "foto").slice(0, 200), date: validDate(r.date) ? r.date : "", stamp: typeof r.stamp === "string" ? r.stamp.slice(0, 19) : "", blob: await (await fetch(r.image)).blob(), savedAt: Date.now() });
+  const meta = (r) => ({ key: r.key, name: String(r.name || "foto").slice(0, 200), date: validDate(r.date) ? r.date : "", stamp: typeof r.stamp === "string" ? r.stamp.slice(0, 19) : "" });
+  let notSaved = false;
   for (const [store, list] of [["refs", refs], ["kept", keptIn]]) {
     if (!list.length) continue;
     try {
-      await idb("readwrite", (st) => st.clear(), store);
-      for (const r of list) { const rec = await record(r); await idb("readwrite", (st) => st.put(rec), store); }
-    } catch { toast("Non riesco a salvare le foto del file in questo browser"); }
+      // Prima si leggono tutte: se un'immagine è rovinata, le foto del browser restano
+      const recs = [];
+      for (const r of list) recs.push(await makeRecord(meta(r), await (await fetch(r.image)).blob()));
+      await idb("readwrite", (st) => { st.clear(); recs.forEach((rec) => st.put(rec)); }, store);
+    } catch { notSaved = true; }
   }
   if (keptIn.length || data.keptRoles) {
     kept = cleanKeptRoles(data.keptRoles);
@@ -4157,7 +4292,8 @@ async function importProgress(file) {
   refresh();
   processQueue();
   const images = new Set([...refs, ...keptIn].map((r) => r.key)).size;
-  toast(`Caricati i progressi di ${savedWhat(n, fileDiary.length, images)}.${n > images ? " Trascina le altre foto: i punti tornano da soli." : ""}`);
+  toast(notSaved ? `Caricati i progressi di ${savedWhat(n, fileDiary.length, 0)}, ma non riesco a salvare le foto del file in questo browser.`
+    : `Caricati i progressi di ${savedWhat(n, fileDiary.length, images)}.${n > images ? " Trascina le altre foto: i punti tornano da soli." : ""}`);
   return true;
 }
 
@@ -4537,6 +4673,7 @@ window.addEventListener("drop", (e) => {
 
 // Sul telefono anche l'analisi parte chiusa: il riassunto dice già com'è andata, si apre a richiesta
 if (MOBILE) $("#accAnalysis").open = false;
+updateSaveBtn();
 refresh();
 loadSaved().then(() => { refresh(); processQueue(); });
 if (!settingsSaved) openSettings(true);
