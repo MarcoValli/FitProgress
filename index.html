@@ -548,14 +548,14 @@ const SETTINGS_KEY = "progressi:settings";
 const MEASURES = {
   front: {
     shoulders: { name: "Spalle", where: "il punto più largo delle spalle, sul deltoide", talk: ["spalle più larghe", "spalle più strette"] },
-    chest: { name: "Torace", where: { male: "all'altezza dei capezzoli, sotto le ascelle", female: "subito sotto il seno", custom: "sotto le ascelle, all'altezza del petto" }, talk: ["torace più largo", "torace più stretto"] },
+    chest: { name: "Torace", where: { male: "a metà dei pettorali, sotto le ascelle", female: "subito sotto il petto", custom: "sotto le ascelle, all'altezza del petto" }, talk: ["torace più largo", "torace più stretto"] },
     arm: { name: "Braccio", where: "il braccio lontano dal telefono, nel punto più largo", talk: ["braccia più grosse", "braccia più sottili"] },
     waist: { name: "Vita", where: { male: "all'altezza dell'ombelico", female: "nel punto più stretto", custom: "nel punto più stretto" }, talk: ["vita più larga", "vita più stretta"] },
     hips: { name: "Fianchi", where: "il punto più largo di fianchi e glutei", talk: ["fianchi più larghi", "fianchi più stretti"] },
     thigh: { name: "Coscia", where: "una coscia nel punto più largo, subito sotto l'inguine", talk: ["cosce più piene", "cosce più sottili"], full: true },
   },
   side: {
-    chest: { name: "Petto", where: { male: "all'altezza del capezzolo", female: "nel punto più sporgente del seno", custom: "nel punto più sporgente del petto" }, talk: ["petto più pieno", "petto più piatto"] },
+    chest: { name: "Petto", where: { male: "a metà del pettorale", female: "nel punto più sporgente del petto", custom: "nel punto più sporgente del petto" }, talk: ["petto più pieno", "petto più piatto"] },
     waist: { name: "Pancia", where: "all'altezza dell'ombelico", talk: ["pancia più in fuori", "pancia più piatta"] },
     glutes: { name: "Glutei", where: "nel punto più sporgente dei glutei", talk: ["glutei più pieni", "glutei più piatti"] },
   },
@@ -598,11 +598,11 @@ const FRAMINGS = {
   full: { label: "Figura intera", sub: "Dalla testa ai piedi" },
 };
 const SCHEMES = {
-  nipples: { label: "Capezzoli", sub: "I più precisi, se si vedono. Più l'ombelico, se vuoi" },
+  nipples: { label: "Pettorali", sub: "Il centro dei due pettorali: i più precisi a petto nudo. Più l'ombelico, se vuoi" },
   neckNavel: { label: "Collo e ombelico", sub: "Vanno bene anche con reggiseno o top" },
 };
 const SIDE_SCHEMES = {
-  nipple: { label: "Capezzolo e ombelico", sub: "I più precisi, se il capezzolo si vede" },
+  nipple: { label: "Pettorale e ombelico", sub: "Il centro del pettorale: i più precisi a petto nudo" },
   chest: { label: "Petto e ombelico", sub: "Il punto più sporgente del petto: va bene anche con un top" },
 };
 // Come si trovano i punti per allineare
@@ -657,8 +657,8 @@ function buildPoses() {
   const front = settings.scheme === "nipples"
     ? {
       align: [
-        { name: "Capezzolo a sinistra", hint: "Clicca il <b>capezzolo a sinistra</b> nella foto." },
-        { name: "Capezzolo a destra", hint: "Clicca il <b>capezzolo a destra</b> nella foto." },
+        { name: "Pettorale a sinistra", hint: "Clicca il <b>centro del pettorale a sinistra</b> nella foto." },
+        { name: "Pettorale a destra", hint: "Clicca il <b>centro del pettorale a destra</b> nella foto." },
         { name: "Ombelico", hint: "Clicca l'<b>ombelico</b>, o un neo o un tatuaggio: sempre lo stesso.", optional: true },
       ],
       targets: [body(-NIP_X, NIP_Y), body(NIP_X, NIP_Y)],
@@ -676,7 +676,7 @@ function buildPoses() {
     side: {
       label: "Di lato",
       align: [
-        settings.sideScheme === "nipple" ? { name: "Capezzolo", hint: "Clicca il <b>capezzolo</b>." }
+        settings.sideScheme === "nipple" ? { name: "Centro del pettorale", hint: "Clicca il <b>centro del pettorale</b>." }
           : { name: "Punto più sporgente del petto", hint: "Clicca il <b>punto più sporgente del petto</b>." },
         { name: "Ombelico", hint: "Clicca l'<b>ombelico</b>, o il centro dell'elastico se è coperto." },
       ],
@@ -1594,7 +1594,7 @@ function framing(p) {
   };
 }
 const pctOf = (v) => `${Math.round(v * 100)}%`;
-const Y_LABEL = { nipples: "i capezzoli", neck: "la base del collo", shoulders: "le spalle" };
+const Y_LABEL = { nipples: "i pettorali", neck: "la base del collo", shoulders: "le spalle" };
 function coachTips(p, ref) {
   const a = framing(p), r = framing(ref);
   if (!a || !r) return null;
