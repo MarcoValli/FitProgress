@@ -236,6 +236,31 @@
   .sheet-tag.on { background: var(--accent); color: #fff; }
   .sheet-ref { position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; border-radius: 11px; display: grid; place-items: center; background: rgba(14,14,16,.82); color: #ffd166; }
   .sheet-ref svg { width: 12px; height: 12px; fill: currentColor; }
+  .sheet-note { margin: 0 3px 12px; }
+  .sheet-date .pill { height: 16px; padding: 0 5px; font-size: 10px; vertical-align: 1px; }
+  /* foto di partenza: le tre proposte più grandi, con il perché */
+  .sheet-grid.start-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .sheet-why { color: var(--faint); font-size: 11.5px; line-height: 1.35; padding-left: 2px; }
+  .start-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 16px 3px 0; }
+  .start-body > .note { margin: 0 3px 12px; }
+  .start-foot { margin: 12px 3px 0 !important; }
+
+  /* ---------- foto salvate ---------- */
+  .kept-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+  .kept-list label { display: grid; grid-template-columns: auto 40px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 10px; cursor: pointer; }
+  .kept-list label:hover { background: var(--raised); }
+  .kept-list label.fixed { cursor: default; }
+  .kept-list label.fixed input { opacity: .3; }
+  .kept-list input { width: 18px; height: 18px; accent-color: var(--danger); }
+  .kept-list img { width: 40px; height: 52px; border-radius: 6px; object-fit: cover; background: #000; }
+  .kept-list .txt { display: grid; gap: 2px; min-width: 0; }
+  .kept-list .d { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .kept-list .sub { color: var(--faint); font-size: 11.5px; }
+  .kept-list .size { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; }
+  .kept-total { font-variant-numeric: tabular-nums; }
+  .btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; font-weight: 600; }
+  .btn.danger:hover:not(:disabled) { background: #f25555; }
+  #keptFoot { flex-wrap: wrap; }
 
   .note { color: var(--muted); font-size: 12px; line-height: 1.5; }
   .results table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
@@ -366,7 +391,8 @@
   .log-entry .vals { color: #dcdce2; font-variant-numeric: tabular-nums; }
   .log-entry .why { color: var(--faint); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .log-list .btn { color: var(--faint); margin-right: 4px; }
-  .log-list .btn:hover:not(:disabled) { color: var(--danger); }
+  .log-list .btn:hover:not(:disabled) { color: var(--text); }
+  .log-list .btn[data-del]:hover:not(:disabled) { color: var(--danger); }
 
   .toast { position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px); opacity: 0; padding: 10px 16px; border-radius: 10px; background: #2a2a30; border: 1px solid var(--border-strong); box-shadow: 0 8px 30px rgba(0,0,0,.5); transition: opacity .2s, transform .2s; pointer-events: none; max-width: 90vw; }
   .toast.show { opacity: 1; transform: translate(-50%, 0); }
@@ -476,6 +502,8 @@
   <symbol id="i-swap" viewBox="0 0 24 24"><path d="M7 4 3 8l4 4"/><path d="M3 8h14"/><path d="m17 20 4-4-4-4"/><path d="M21 16H7"/></symbol>
   <symbol id="i-chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
   <symbol id="i-grid" viewBox="0 0 24 24"><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></symbol>
+  <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></symbol>
+  <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></symbol>
 </svg>
 
 <header class="topbar">
@@ -591,6 +619,7 @@
             <label class="field"><span>Posa</span><select class="input" id="poseInput"></select></label>
           </div>
           <p class="note" id="refNote"></p>
+          <button type="button" class="btn" id="startBtn"><svg class="icon"><use href="#i-flag"/></svg><span>Usa come foto di partenza</span></button>
         </div>
       </details>
 
@@ -694,6 +723,25 @@
   </header>
   <div class="sheet-tabs segmented full" role="tablist" aria-label="Posa" id="sheetPoses"></div>
   <div class="sheet-body" id="sheetGrid"></div>
+</dialog>
+
+<!-- Foto di partenza: tre proposte fra le più vecchie, o la scegli tu -->
+<dialog class="sheet" id="startSheet" aria-labelledby="startTitle">
+  <div class="sheet-grab" aria-hidden="true"></div>
+  <header class="sheet-head">
+    <h2 id="startTitle">Foto di partenza</h2>
+    <button type="button" class="btn ghost icon-only" id="startClose" aria-label="Chiudi"><svg class="icon"><use href="#i-x"/></svg></button>
+  </header>
+  <div class="sheet-body" id="startBody"></div>
+</dialog>
+
+<!-- Foto salvate nel browser e nel file: riferimenti, partenza, Dopo e tappe -->
+<dialog class="dialog" id="keptDialog" aria-labelledby="keptTitle">
+  <form method="dialog">
+    <header><h2 id="keptTitle">Foto salvate</h2><p class="intro" id="keptIntro"></p></header>
+    <div class="body" id="keptBody"></div>
+    <footer id="keptFoot"></footer>
+  </form>
 </dialog>
 
 <dialog class="dialog" id="settingsDialog" aria-labelledby="settingsTitle">
@@ -874,7 +922,7 @@ const MOBILE = matchMedia("(pointer: coarse)").matches && Math.min(screen.width,
 const MAX_SIDE = MOBILE ? 1280 : 1600;
 
 // picked: pose per cui in questa sessione hai già scelto i punti; picking: posa di cui stai cambiando i punti
-const state = { photos: [], selected: null, mode: "align", view: "prepare", cmode: "wipe", wipe: 50, fade: 50, comparePose: "front", thirds: {}, refKeys: new Set(), guidePose: "front", picked: new Set(), picking: null, logMetric: "weight" };
+const state = { photos: [], selected: null, mode: "align", view: "prepare", cmode: "wipe", wipe: 50, fade: 50, comparePose: "front", thirds: {}, refKeys: new Set(), keptKeys: new Set(), askStart: false, guidePose: "front", picked: new Set(), picking: null, logMetric: "weight" };
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fmtDate = (d) => d ? d.split("-").reverse().join("/") : "";
@@ -1134,6 +1182,7 @@ async function addFiles(files) {
   // Foto aggiunte dal diario: si passa a prepararle
   if (added && state.view === "log") state.view = "prepare";
   if (added) state.goCompare = true; // in automatico, finito il lavoro si apre il confronto
+  if (added) state.askStart = true; // e si propone la foto di partenza, se manca
   refresh();
   processQueue();
 }
@@ -1141,14 +1190,18 @@ async function addFiles(files) {
 // ------------------------------------------------------------------ riferimenti (IndexedDB, solo in questo browser)
 
 const MAX_REFS = 2; // per posa
-function idb(mode, fn) {
+// Due archivi: "refs" per i riferimenti (la stella), "kept" per le foto salvate per il confronto
+// (partenza e Dopo, vedi più sotto). Stessa forma: { key, name, date, stamp, blob, savedAt }
+function idb(mode, fn, store = "refs") {
   return new Promise((resolve, reject) => {
-    const open = indexedDB.open("progressi", 1);
-    open.onupgradeneeded = () => open.result.createObjectStore("refs", { keyPath: "key" });
+    const open = indexedDB.open("progressi", 2);
+    open.onupgradeneeded = () => {
+      for (const s of ["refs", "kept"]) if (!open.result.objectStoreNames.contains(s)) open.result.createObjectStore(s, { keyPath: "key" });
+    };
     open.onerror = () => reject(open.error);
     open.onsuccess = () => {
-      const tx = open.result.transaction("refs", mode);
-      const req = fn(tx.objectStore("refs"));
+      const tx = open.result.transaction(store, mode);
+      const req = fn(tx.objectStore(store));
       tx.oncomplete = () => { open.result.close(); resolve(req?.result); };
       tx.onerror = () => { open.result.close(); reject(tx.error); };
     };
@@ -1178,15 +1231,25 @@ async function setRef(p, on) {
   if (on) processQueue();
 }
 
-async function loadRefs() {
-  let refs = [];
+// Riferimenti e foto salvate per il confronto: quelle che non hai aperto diventano foto dell'elenco
+async function loadSaved() {
+  let refs = [], kept = [];
   try { refs = (await idb("readonly", (s) => s.getAll())) || []; } catch { return; }
-  for (const r of refs) {
-    state.refKeys.add(r.key);
+  try { kept = (await idb("readonly", (s) => s.getAll(), "kept")) || []; } catch { /* niente salvato */ }
+  state.keptKeys = new Set(kept.map((r) => r.key));
+  const refKeys = new Set(refs.map((r) => r.key));
+  for (const r of [...refs, ...kept.filter((x) => !refKeys.has(x.key))]) {
+    const isRef = refKeys.has(r.key);
+    if (isRef) state.refKeys.add(r.key);
     // Prima per nome e peso; per ora di scatto solo se una sola foto aperta ce l'ha (le raffiche hanno la stessa ora)
     const sameStamp = r.stamp ? state.photos.filter((p) => p.stamp === r.stamp) : [];
     const open = state.photos.find((p) => p.key === r.key) || (sameStamp.length === 1 ? sameStamp[0] : null);
-    if (open) { open.ref = true; state.refKeys.add(open.key); continue; }
+    if (open) {
+      if (isRef) { open.ref = true; state.refKeys.add(open.key); }
+      // La stessa foto aperta con un altro nome: partenza e Dopo passano a lei
+      if (open.key !== r.key) renameKept(r.key, open.key);
+      continue;
+    }
     try {
       const img = await loadImage(r.blob);
       const B = Math.max(img.naturalWidth, img.naturalHeight);
@@ -1194,8 +1257,103 @@ async function loadRefs() {
       const p = await makePhoto(r.key, r.name, blob, validDate(r.date) ? r.date : "", r.stamp || "", Math.min(B, MAX_SIDE) / B);
       state.photos.push(p);
       if (!state.selected) state.selected = p;
-    } catch { /* riferimento rovinato: si ignora */ }
+    } catch { /* foto salvata rovinata: si ignora */ }
   }
+}
+
+// ------------------------------------------------------------------ foto di partenza e Dopo, salvate per il confronto
+//
+// Per ogni posa: la foto di partenza (il Prima fisso, la scegli tu fra quelle che ti propongo) e il Dopo, la foto più
+// recente più adatta alla partenza. Tutte e due si salvano come immagini (archivio "kept"), così riaprendo la pagina
+// il confronto c'è anche senza trascinare le foto. Quando arriva un Dopo più nuovo, quello di prima resta salvato
+// come tappa: i progressi restano tracciati. Ruoli in localStorage, immagini in IndexedDB e nel file dei progressi.
+
+const KEPT_KEY = "progressi.kept";
+const keptRoles = () => ({ start: {}, after: {}, tappe: [] });
+// Chiave di una foto (come validKey, che sta più in basso: qui serve già all'avvio)
+const isPhotoKey = (k) => typeof k === "string" && k.startsWith("progressi:") && k !== SETTINGS_KEY && k.length < 400;
+function cleanKeptRoles(v) {
+  const out = keptRoles();
+  if (!v || typeof v !== "object") return out;
+  for (const role of ["start", "after"]) {
+    for (const k of POSE_KEYS_ALL) if (isPhotoKey(v[role]?.[k])) out[role][k] = v[role][k];
+  }
+  if (Array.isArray(v.tappe)) out.tappe = [...new Set(v.tappe.filter(isPhotoKey))].slice(-1000);
+  return out;
+}
+let kept = (() => { try { return cleanKeptRoles(JSON.parse(localStorage.getItem(KEPT_KEY))); } catch { return keptRoles(); } })();
+function saveKeptRoles() {
+  try { localStorage.setItem(KEPT_KEY, JSON.stringify(kept)); } catch { /* spazio pieno */ }
+}
+// Chiavi che devono avere l'immagine salvata
+const keptNeeded = () => new Set([...Object.values(kept.start), ...Object.values(kept.after), ...kept.tappe]);
+function renameKept(from, to) {
+  for (const role of ["start", "after"]) for (const k of POSE_KEYS_ALL) if (kept[role][k] === from) kept[role][k] = to;
+  kept.tappe = [...new Set(kept.tappe.map((x) => (x === from ? to : x)))];
+  saveKeptRoles();
+}
+const startOf = (k) => state.photos.find((p) => p.key === kept.start[k] && p.pose === k) || null;
+const afterOf = (k) => state.photos.find((p) => p.key === kept.after[k] && p.pose === k) || null;
+const roleOf = (p) => kept.start[p.pose] === p.key ? "start" : kept.after[p.pose] === p.key ? "after" : kept.tappe.includes(p.key) ? "tappa" : null;
+
+// Il Dopo: fra le foto dopo la partenza, in linea con lei (non da scartare, non doppioni), la più adatta
+// fra le più recenti (una settimana prima dell'ultima buona). Se nessuna è in linea, la più recente
+function bestAfter(k) {
+  const start = startOf(k);
+  if (!start?.M) return null;
+  const rows = analyzePose(k).rows.filter((r) => r.p !== start && byDate(start, r.p) < 0 && !r.dup && r.use);
+  if (!rows.length) return null;
+  const good = rows.filter((r) => r.level !== "bad"), pool = good.length ? good : rows;
+  const last = pool[pool.length - 1].p;
+  const days = (p) => p.date && last.date ? (new Date(last.date) - new Date(p.date)) / 864e5 : (p === last ? 0 : Infinity);
+  return pool.filter((r) => days(r.p) <= 7).sort((a, b) => a.rank - b.rank || byDate(b.p, a.p))[0].p;
+}
+
+// Aggiorna i Dopo e mette nel browser le immagini che servono (toglie quelle che non servono più).
+// Una alla volta: la coda e la scelta della partenza possono chiamarla insieme
+let keptChain = Promise.resolve();
+function updateKept() {
+  keptChain = keptChain.then(async () => {
+    let changed = false;
+    for (const k of POSE_KEYS_ALL) {
+      const next = startOf(k) ? bestAfter(k) : null, cur = kept.after[k];
+      if (!next || next.key === cur) continue;
+      // Il Dopo di prima resta salvato come tappa
+      if (cur && cur !== kept.start[k] && !kept.tappe.includes(cur)) kept.tappe.push(cur);
+      kept.after[k] = next.key;
+      changed = true;
+    }
+    saveKeptRoles();
+    const need = keptNeeded();
+    try {
+      for (const key of need) {
+        if (state.keptKeys.has(key)) continue;
+        const p = state.photos.find((q) => q.key === key);
+        if (!p) continue;
+        await idb("readwrite", (s) => s.put({ key: p.key, name: p.name, date: p.date, stamp: p.stamp, blob: p.baseBlob, savedAt: Date.now() }), "kept");
+        state.keptKeys.add(key);
+        navigator.storage?.persist?.().catch(() => {});
+      }
+      for (const key of [...state.keptKeys]) {
+        if (need.has(key)) continue;
+        await idb("readwrite", (s) => s.delete(key), "kept");
+        state.keptKeys.delete(key);
+      }
+    } catch { toast("Non riesco a salvare le foto del confronto nel browser"); }
+    return changed;
+  });
+  return keptChain;
+}
+
+async function setStart(p) {
+  if (kept.after[p.pose] === p.key) delete kept.after[p.pose];
+  kept.tappe = kept.tappe.filter((x) => x !== p.key);
+  kept.start[p.pose] = p.key;
+  // Il confronto riparte da partenza e Dopo
+  if (state.comparePose === p.pose) { state.selA = null; state.selB = null; }
+  await updateKept();
+  toast(`Foto di partenza ${POSES[p.pose].label.toLowerCase()}: ${labelOf(p)}. Resta salvata in questo browser`);
+  refresh();
 }
 
 function save(p) {
@@ -2038,8 +2196,15 @@ async function processQueue() {
     const best = POSE_KEYS.map((k) => [k, readyFor(k).length]).sort((a, b) => b[1] - a[1])[0];
     if (best?.[1] >= 2 && !state.photos.some((p) => p.lm && !p.align.length)) { state.comparePose = best[0]; state.view = "compare"; changedAny = true; }
   }
+  // Tutte le foto riconosciute: Dopo aggiornati e immagini salvate; con foto nuove, si propone la partenza che manca
+  const settled = !state.photos.some((p) => !p.lm);
+  if (settled) {
+    computeTransforms();
+    if (await updateKept()) changedAny = true;
+  }
   if (changedAny) refresh();
-  if (state.photos.some((p) => !p.lm)) processQueue();
+  if (settled && state.askStart) { state.askStart = false; askStart(); }
+  if (!settled) processQueue();
 }
 
 // ---- consigli rispetto al riferimento
@@ -2175,7 +2340,12 @@ function updatePrepare() {
   }
   $("#photoTitle").textContent = p.date ? fmtDate(p.date) : "Senza data";
   $("#photoSub").textContent = `${pose.label} · ${p.name}`;
-  $("#photoSum").textContent = `${p.date ? fmtDate(p.date) : "senza data"} · ${pose.label.toLowerCase()}`;
+  const isStart = roleOf(p) === "start";
+  $("#photoSum").textContent = `${p.date ? fmtDate(p.date) : "senza data"} · ${pose.label.toLowerCase()}${isStart ? " · partenza" : ""}`;
+  // Foto di partenza: il Prima del confronto. Serve allineata
+  $("#startBtn").disabled = isStart || !p.M;
+  $("#startBtn span").textContent = isStart ? "È la foto di partenza" : "Usa come foto di partenza";
+  $("#startBtn").title = isStart ? `Il Prima dei confronti ${pose.label.toLowerCase()}` : p.M ? `Il Prima dei confronti ${pose.label.toLowerCase()}: resta salvata in questo browser` : "Prima va allineata";
   const nMeas = pose.measures.filter((id) => p.meas[id]?.length === 2).length;
   $("#pointsSum").textContent = !p.M ? (p.align.length ? `${p.align.length} punti di ${alignSteps(p).length}` : "da allineare")
     : `${p.auto ? "allineata in automatico" : "allineata"}${pose.measures.length ? ` · ${nMeas}/${pose.measures.length} misure` : ""}`;
@@ -2330,6 +2500,7 @@ $("#editBar").addEventListener("click", (e) => {
   if (b && !b.disabled) $(`#${b.dataset.proxy}`).click();
 });
 $("#pointsBtn").addEventListener("click", () => { state.picking = state.selected.pose; refresh(); });
+$("#startBtn").addEventListener("click", () => { if (state.selected?.M) setStart(state.selected); });
 $("#zoomBtn").addEventListener("click", () => { state.zoom = !state.zoom; drawEditor(); });
 
 function toCanvas(e, canvas) {
@@ -2612,7 +2783,7 @@ function renderSidebar() {
       const status = !p.M ? (p.lm || p.align.length ? '<span class="pill">Da allineare</span>' : '<span class="pill">Riconosco la posa…</span>')
         : p.auto ? (!p.auto.sure && settings.detect !== "auto" ? '<span class="pill yellow">Da controllare</span>' : '<span class="pill blue"><svg class="icon"><use href="#i-sparkle"/></svg>Allineata</span>')
         : measureComplete(p) ? '<span class="pill green">Con misure</span>' : '<span class="pill blue">Allineata</span>';
-      const pill = `<span class="pills">${p.ref ? '<span class="pill accent"><svg class="icon"><use href="#i-star"/></svg>Riferimento</span>' : ""}${status}</span>`;
+      const pill = `<span class="pills">${roleOf(p) === "start" ? '<span class="pill accent"><svg class="icon"><use href="#i-flag"/></svg>Partenza</span>' : ""}${p.ref ? '<span class="pill accent"><svg class="icon"><use href="#i-star"/></svg>Riferimento</span>' : ""}${status}</span>`;
       item.innerHTML = `<img alt="" src="${p.thumb}"><span class="txt"><span class="date">${p.date ? fmtDate(p.date) : "Senza data"}</span>`
         + `<span class="name">${esc(p.name)}</span><span>${pill}</span></span>`;
       item.addEventListener("click", () => { state.selected = p; state.view = "prepare"; refresh(); });
@@ -2748,10 +2919,13 @@ function fillCompareControls() {
   const poses = POSE_KEYS.filter((k) => readyFor(k).length >= 2);
   if (!poses.includes(state.comparePose)) state.comparePose = poses[0];
   const ready = readyFor(state.comparePose);
-  if (!photoOf(state.selA)) state.selA = ready[0]?.key;
-  if (!photoOf(state.selB) || state.selB === state.selA) state.selB = ready.filter((p) => p.key !== state.selA).pop()?.key;
+  // Di base: la foto di partenza e il suo Dopo; se non ci sono, la prima e l'ultima
+  const start = photoOf(kept.start[state.comparePose]), after = photoOf(kept.after[state.comparePose]);
+  if (!photoOf(state.selA)) state.selA = (start || ready[0])?.key;
+  if (!photoOf(state.selB) || state.selB === state.selA) state.selB = (after && after.key !== state.selA ? after : ready.filter((p) => p.key !== state.selA).pop())?.key;
   for (const slot of ["A", "B"]) {
     const p = photoOf(state[`sel${slot}`]), b = document.querySelector(`.cmp-slot[data-slot="${slot}"]`);
+    b.querySelector("small").textContent = slot === "A" ? (p && p === start ? "Partenza" : "Prima") : "Dopo";
     b.querySelector("img").src = p?.thumb || "";
     // Data corta (10/01/26): ci sta anche sul telefono
     b.querySelector("b").textContent = p ? (p.date ? fmtDate(p.date).replace(/\/20(\d\d)$/, "/$1") : p.name) : "Scegli";
@@ -2785,26 +2959,31 @@ function renderSheet() {
   const other = sheetPose === state.comparePose ? state[`sel${sheetSlot === "A" ? "B" : "A"}`] : null;
   // Dalla più recente: di solito si cerca l'ultima foto
   const list = [...readyFor(sheetPose)].reverse();
-  $("#sheetGrid").innerHTML = `<div class="sheet-grid">${list.map((p) => {
+  const start = startOf(sheetPose);
+  const startLine = sheetSlot === "A"
+    ? `<p class="note sheet-note">${start ? `Foto di partenza: ${esc(labelOf(start))}. Qui scegli il Prima solo per adesso. ` : "Nessuna foto di partenza. "}<button type="button" class="link" id="sheetStart">${start ? "Cambia la foto di partenza" : "Sceglila"}</button></p>` : "";
+  $("#sheetGrid").innerHTML = `${startLine}<div class="sheet-grid">${list.map((p) => {
     const tagTxt = p.key === mine ? (sheetSlot === "A" ? "Prima" : "Dopo") : p.key === other ? (sheetSlot === "A" ? "Dopo" : "Prima") : "";
     return `<button type="button" class="sheet-item" data-key="${esc(p.key)}" aria-pressed="${p.key === mine}">`
       + `<img alt="" src="${p.thumb}">${tagTxt ? `<span class="sheet-tag ${p.key === mine ? "on" : ""}">${tagTxt}</span>` : ""}`
       + `${p.ref ? '<span class="sheet-ref" title="Riferimento"><svg class="icon"><use href="#i-star"/></svg></span>' : ""}`
-      + `<span class="sheet-date">${esc(p.date ? fmtDate(p.date) : "Senza data")}</span></button>`;
+      + `<span class="sheet-date">${esc(p.date ? fmtDate(p.date) : "Senza data")}${p === start ? ' <span class="pill accent">Partenza</span>' : ""}</span></button>`;
   }).join("")}</div>`;
+  $("#sheetStart")?.addEventListener("click", () => { sheet.close(); openStart([sheetPose], true); });
   $("#sheetPoses").querySelectorAll("[data-spose]").forEach((b) => b.addEventListener("click", () => { sheetPose = b.dataset.spose; renderSheet(); }));
   $("#sheetGrid").querySelectorAll("[data-key]").forEach((b) => b.addEventListener("click", () => pickCompare(b.dataset.key)));
 }
 function pickCompare(key) {
   const slot = `sel${sheetSlot}`, otherSlot = `sel${sheetSlot === "A" ? "B" : "A"}`;
   if (sheetPose !== state.comparePose) {
-    // Altra posa: l'altra foto diventa la più lontana nel tempo da quella scelta
+    // Altra posa: l'altra foto è quella di base della posa (partenza o Dopo, se no la prima o l'ultima)
     state.comparePose = sheetPose;
-    const ready = readyFor(sheetPose), i = ready.findIndex((p) => p.key === key);
-    state[otherSlot] = (i < ready.length / 2 ? ready[ready.length - 1] : ready[0]).key;
-    if (state[otherSlot] === key) state[otherSlot] = ready.find((p) => p.key !== key).key;
+    state[slot] = key;
+    state[otherSlot] = null;
+    fillCompareControls();
   } else if (state[otherSlot] === key) state[otherSlot] = state[slot]; // la stessa foto: si scambiano
   state[slot] = key;
+  if (state[otherSlot] === key) { state[otherSlot] = null; fillCompareControls(); }
   // Prima viene prima nel tempo
   const A = photoOf(state.selA), B = photoOf(state.selB);
   if (A && B && byDate(A, B) > 0) [state.selA, state.selB] = [state.selB, state.selA];
@@ -2815,6 +2994,170 @@ document.querySelectorAll(".cmp-slot").forEach((b) => b.addEventListener("click"
 $("#sheetClose").addEventListener("click", () => sheet.close());
 sheet.addEventListener("click", (e) => { if (e.target === sheet) sheet.close(); }); // tocco fuori dal cassetto
 $("#swapBtn").addEventListener("click", () => { [state.selA, state.selB] = [state.selB, state.selA]; refresh(); });
+
+// ---- scelta della foto di partenza: tre proposte fra le più vecchie della posa, o la scegli tu fra tutte
+//
+// Si apre da sola quando hai aggiunto foto e una posa con almeno 2 foto pronte non ha ancora la partenza;
+// a mano dal cassetto (Prima) e da Prepara. Una posa alla volta
+const startSheet = $("#startSheet");
+let startQueue = [], startAll = false, startManual = false;
+
+// Fra le più vecchie (il primo terzo, almeno 3) le tre più adatte: dritte, in linea con le altre, senza mani davanti
+function suggestStart(k) {
+  const rows = analyzePose(k, { noStart: true }).rows;
+  const old = rows.slice(0, Math.max(3, Math.ceil(rows.length / 3)));
+  const score = (r) => r.geo.length * 2 + r.handFlags.length * 1.5 + r.lightFlags.length * 0.5 + (r.p.auto && !r.p.auto.sure ? 1.5 : 0) + (r.dup ? 1 : 0);
+  const picks = old.map((r) => ({ r, s: score(r) })).sort((a, b) => a.s - b.s || byDate(a.r.p, b.r.p)).slice(0, 3);
+  const top = picks[0]?.r;
+  return picks.sort((a, b) => byDate(a.r.p, b.r.p)).map(({ r }) => {
+    const flags = [...r.geo, ...r.handFlags, ...r.lightFlags, ...(r.dup ? ["c'è un'altra foto dello stesso giorno"] : [])];
+    return { p: r.p, best: r === top, why: flags.length ? cap1(flags.join(", ")) : "Dritta, in linea con le altre" };
+  });
+}
+function openStart(poses, manual) {
+  startQueue = poses.filter((k) => readyFor(k).length >= (manual ? 1 : 2));
+  if (!startQueue.length || startSheet.open) return;
+  startManual = manual;
+  startAll = false;
+  renderStart();
+  startSheet.showModal();
+  // Il focus sulla foto consigliata, non sulla X
+  ($("#startBody .sheet-tag.on")?.closest("[data-start]") || $("#startBody [data-start]"))?.focus({ preventScroll: true });
+}
+// In automatico solo se non c'è già un'altra finestra aperta (la prima volta: le impostazioni)
+function askStart() {
+  if (startSheet.open || document.querySelector("dialog[open]")) return;
+  computeTransforms();
+  openStart(POSE_KEYS.filter((k) => readyFor(k).length >= 2 && !startOf(k)), false);
+}
+function renderStart() {
+  const k = startQueue[0], cur = startOf(k), label = POSES[k].label.toLowerCase();
+  $("#startTitle").textContent = `Foto di partenza · ${label}`;
+  const item = (p, tagHtml = "", why = "") => `<button type="button" class="sheet-item" data-start="${esc(p.key)}" aria-pressed="${p === cur}" aria-label="Usa ${esc(labelOf(p))} come foto di partenza">`
+    + `<img alt="" src="${p.thumb}">${tagHtml}${p.ref ? '<span class="sheet-ref" title="Riferimento"><svg class="icon"><use href="#i-star"/></svg></span>' : ""}`
+    + `<span class="sheet-date">${esc(p.date ? fmtDate(p.date) : "Senza data")}</span>${why ? `<span class="sheet-why">${esc(why)}</span>` : ""}</button>`;
+  const next = startQueue.length > 1 ? ` Poi: ${startQueue.slice(1).map((q) => POSES[q].label.toLowerCase()).join(", ")}.` : "";
+  const body = startAll
+    ? `<p class="note">Tutte le foto ${esc(label)} pronte per il confronto, dalla più vecchia.${next}</p>
+      <div class="sheet-grid">${readyFor(k).map((p) => item(p, p === cur ? '<span class="sheet-tag on">Partenza</span>' : "")).join("")}</div>`
+    : `<p class="note">Il Prima di tutti i confronti ${esc(label)}. Ti propongo queste fra le più vecchie: scegline una.${next}</p>
+      <div class="sheet-grid start-grid">${suggestStart(k).map((s) => item(s.p, s.best ? '<span class="sheet-tag on">Consigliata</span>' : "", s.why)).join("")}</div>`;
+  $("#startBody").className = "sheet-body start-body";
+  $("#startBody").innerHTML = body + `<div class="start-actions">
+      ${startAll ? '<button type="button" class="btn" id="startBack">Torna alle proposte</button>' : '<button type="button" class="btn" id="startAllBtn">Scegli tu fra tutte</button>'}
+      <button type="button" class="btn ghost" id="startLater">${startManual ? "Annulla" : "Più tardi"}</button>
+    </div>
+    <p class="note start-foot">Resta salvata in questo browser e nel file dei progressi, insieme al Dopo più adatto: riaprendo la pagina il confronto c'è già, anche senza le foto.</p>`;
+  $("#startBody").querySelectorAll("[data-start]").forEach((b) => b.addEventListener("click", async () => {
+    const p = state.photos.find((q) => q.key === b.dataset.start);
+    if (!p) return;
+    await setStart(p);
+    startQueue.shift();
+    if (!startQueue.length) { startSheet.close(); return; }
+    startAll = false;
+    renderStart();
+    $("#startBody [data-start]")?.focus({ preventScroll: true });
+  }));
+  $("#startAllBtn")?.addEventListener("click", () => { startAll = true; renderStart(); });
+  $("#startBack")?.addEventListener("click", () => { startAll = false; renderStart(); });
+  $("#startLater").addEventListener("click", () => startSheet.close());
+  $("#startBody").scrollTop = 0;
+}
+$("#startClose").addEventListener("click", () => startSheet.close());
+startSheet.addEventListener("click", (e) => { if (e.target === startSheet) startSheet.close(); });
+startSheet.addEventListener("close", () => { startQueue = []; });
+
+// ---- foto salvate: elenco con il peso, per toglierne qualcuna (anche quando il file dei progressi diventa grande)
+const FILE_WARN_BYTES = 50e6; // oltre i 50 MB il file è scomodo da salvare e da spostare
+const b64Size = (n) => Math.ceil(n / 3) * 4 + 300; // immagine dentro il file, con nome e data
+const mbText = (n) => n < 1e5 ? "meno di 0,1 MB" : `${num(n / 1e6, n < 1e7 ? 1 : 0)} MB`;
+// Tutte le immagini salvate, una per foto: { key, name, date, stamp, blob, ref, kept }
+async function savedImages() {
+  const refs = await idb("readonly", (s) => s.getAll()).catch(() => []) || [];
+  const kp = await idb("readonly", (s) => s.getAll(), "kept").catch(() => []) || [];
+  const map = new Map(refs.map((r) => [r.key, { ...r, ref: true, kept: false }]));
+  for (const r of kp) {
+    if (map.has(r.key)) map.get(r.key).kept = true;
+    else map.set(r.key, { ...r, ref: false, kept: true });
+  }
+  return [...map.values()].sort((a, b) => (a.date || "9999").localeCompare(b.date || "9999"));
+}
+// Partenza e Dopo di adesso servono al confronto: non si tolgono da qui
+const keptFixed = (key) => Object.values(kept.start).includes(key) || Object.values(kept.after).includes(key);
+async function removeSaved(items) {
+  try {
+    for (const it of items) {
+      if (it.ref) {
+        await idb("readwrite", (s) => s.delete(it.key));
+        state.refKeys.delete(it.key);
+        const p = state.photos.find((q) => q.key === it.key);
+        if (p) p.ref = false;
+      }
+      kept.tappe = kept.tappe.filter((x) => x !== it.key);
+    }
+    saveKeptRoles();
+    await updateKept(); // toglie le immagini che non servono più
+  } catch { toast("Non riesco a togliere le foto dal browser"); }
+  refresh();
+}
+// mode "manage": dalle impostazioni. mode "export": il file supera FILE_WARN_BYTES (total, in byte).
+// Risponde "removed" (tolte, nel modo export poi si salva), "keep" (salva lo stesso) o "cancel"
+async function openKept(mode, total = 0, other = 0) {
+  const dlg = $("#keptDialog"), items = await savedImages();
+  const urls = items.map((it) => URL.createObjectURL(it.blob));
+  const poseOf = (key) => {
+    const p = state.photos.find((q) => q.key === key);
+    if (p) return p.pose;
+    try { return JSON.parse(localStorage.getItem(key))?.pose; } catch { return null; }
+  };
+  const roles = (it) => {
+    const pose = poseOf(it.key), xs = [];
+    if (pose && kept.start[pose] === it.key) xs.push("partenza");
+    if (pose && kept.after[pose] === it.key) xs.push("Dopo");
+    if (kept.tappe.includes(it.key)) xs.push("tappa");
+    if (it.ref) xs.push("riferimento");
+    return `${pose ? `${POSES[pose]?.label || ""} · ` : ""}${xs.join(", ")}`;
+  };
+  const sumAll = items.reduce((s, it) => s + it.blob.size, 0);
+  $("#keptIntro").textContent = mode === "export"
+    ? `Il file dei progressi peserebbe circa ${mbText(total)}: oltre ${mbText(FILE_WARN_BYTES)} è scomodo da salvare e da spostare. Togli qualche foto salvata, o tienile tutte e salva lo stesso.`
+    : `${countOf(items.length, "foto salvata", "foto salvate")} in questo browser, ${mbText(sumAll)}. Finiscono anche nel file dei progressi.`;
+  $("#keptBody").innerHTML = items.length ? `<ul class="kept-list">${items.map((it, i) => {
+    const fixed = keptFixed(it.key);
+    return `<li><label class="${fixed ? "fixed" : ""}"${fixed ? ' title="Serve al confronto: per toglierla scegli un\'altra foto di partenza"' : ""}>
+      <input type="checkbox" data-i="${i}" ${fixed ? "disabled" : ""} aria-label="Togli ${esc(it.date ? fmtDate(it.date) : it.name)}">
+      <img alt="" src="${urls[i]}">
+      <span class="txt"><span class="d">${esc(it.date ? fmtDate(it.date) : it.name)}</span><span class="sub">${esc(cap1(roles(it) || "salvata"))}${fixed ? " · serve al confronto" : ""}</span></span>
+      <span class="size">${mbText(b64Size(it.blob.size))}</span></label></li>`;
+  }).join("")}</ul><p class="note kept-total" id="keptTotal" aria-live="polite"></p>` : `<p class="note">Nessuna foto salvata.</p>`;
+  $("#keptFoot").innerHTML = mode === "export"
+    ? `<button class="btn" value="cancel">Annulla</button><button class="btn" value="keep">Salva lo stesso</button><button class="btn danger" value="remove" id="keptRemove" disabled>Togli e salva</button>`
+    : `<button class="btn" value="cancel">Chiudi</button><button class="btn danger" value="remove" id="keptRemove" disabled>Togli le selezionate</button>`;
+  const picked = () => [...dlg.querySelectorAll("[data-i]:checked")].map((c) => items[+c.dataset.i]);
+  const update = () => {
+    const sel = picked(), freed = sel.reduce((s, it) => s + b64Size(it.blob.size), 0);
+    if ($("#keptRemove")) $("#keptRemove").disabled = !sel.length;
+    if ($("#keptTotal")) $("#keptTotal").textContent = sel.length
+      ? `${countOf(sel.length, "foto selezionata", "foto selezionate")}: le tolgo da questo browser e dal file. ${mode === "export" ? `Il file peserà circa ${mbText(Math.max(0, total - freed))}.` : `Liberi ${mbText(freed)}.`}`
+      : mode === "export" ? `Le foto salvate pesano ${mbText(total - other)} del file.` : "";
+  };
+  dlg.querySelectorAll("[data-i]").forEach((c) => c.addEventListener("change", update));
+  update();
+  dlg.returnValue = "";
+  dlg.showModal();
+  return new Promise((resolve) => {
+    dlg.onclose = async () => {
+      dlg.onclose = null;
+      const sel = picked();
+      urls.forEach((u) => URL.revokeObjectURL(u));
+      if (dlg.returnValue === "remove" && sel.length) {
+        await removeSaved(sel);
+        toast(`${countOf(sel.length, "foto tolta", "foto tolte")} dalle foto salvate`);
+        resolve("removed");
+      } else resolve(dlg.returnValue === "keep" ? "keep" : "cancel");
+    };
+  });
+}
 $("#guidesBtn").addEventListener("click", () => { state.guides = !state.guides; fillCompareControls(); drawCompare(); });
 
 document.querySelectorAll("[data-cmode]").forEach((b) => b.addEventListener("click", () => {
@@ -3089,7 +3432,8 @@ function trend(pts, noise) {
   return { start, end, chg, se, verdict, n };
 }
 
-function analyzePose(k) {
+// noStart: senza la foto di partenza come riferimento (per proporne una nuova)
+function analyzePose(k, { noStart = false } = {}) {
   const photos = readyFor(k);
   const zones = zonesFor(k, photos);
   const rows = photos.map((p) => {
@@ -3107,9 +3451,10 @@ function analyzePose(k) {
     };
   });
 
-  // Riferimento: la foto salvata come riferimento; se non c'è, con 3 foto o più la mediana
-  // (una foto storta non sposta niente), con 2 la prima
-  const refRow = rows.filter((r) => r.p.ref).sort((a, b) => byDate(a.p, b.p))[0];
+  // Riferimento: la foto di partenza (il Prima del confronto), poi la foto salvata come riferimento; se non ci sono,
+  // con 3 foto o più la mediana (una foto storta non sposta niente), con 2 la prima
+  const startRow = noStart ? null : rows.find((r) => r.p.key === kept.start[k]);
+  const refRow = startRow || rows.filter((r) => r.p.ref).sort((a, b) => byDate(a.p, b.p))[0];
   const refOf = (get) => {
     if (refRow && get(refRow) != null) return get(refRow);
     const vals = rows.map(get).filter((v) => v != null);
@@ -3256,9 +3601,9 @@ const LEVEL = { ref: ["Riferimento", "accent"], good: ["Buona", "green"], ok: ["
 function renderQuality(an) {
   const box = $("#quality");
   const items = an.rows.map((r) => {
-    const [label, cls] = r.dup && !r.p.use ? ["Doppione", ""] : LEVEL[r.level];
+    const [label, cls] = r.dup && !r.p.use ? ["Doppione", ""] : r.isRef && roleOf(r.p) === "start" ? ["Partenza", "accent"] : LEVEL[r.level];
     const why = [...r.geo, ...r.handFlags, ...r.lightFlags, ...(hasTweak(r.p) ? ["ritoccata a mano"] : [])];
-    const text = r.isRef ? (r.p.ref ? "Il tuo riferimento: le altre si confrontano con questa" : "Le altre si confrontano con questa")
+    const text = r.isRef ? (roleOf(r.p) === "start" ? "La foto di partenza: le altre si confrontano con questa" : r.p.ref ? "Il tuo riferimento: le altre si confrontano con questa" : "Le altre si confrontano con questa")
       : r.dup ? `Stesso giorno: tengo ${r.dup.p.name}${why.length ? ` (${why.join(", ")})` : ""}`
       : why.length ? why.join(", ") : "In linea con le altre";
     return `<li class="${r.use ? "" : "off"}"><div class="top"><span class="d">${esc(labelOf(r.p))}</span><span class="pill ${cls}">${label}</span></div>`
@@ -3550,8 +3895,8 @@ function openSettings(first = false) {
       ${sec("definition", "Definizione", draft.definition ? "Accesa" : "Spenta",
         `<label class="switch"><span>Stima la definizione muscolare<small>Ombre fra i muscoli di petto, addome e schiena. Spegnila se fai le foto con la maglietta.</small></span><input type="checkbox" id="defInput" ${draft.definition ? "checked" : ""}></label>`)}
       ${sec("data", "I tuoi progressi", days < 0 ? "Mai salvati in un file" : days === 0 ? "Salvati oggi" : days === 1 ? "Salvati ieri" : `Salvati ${days} giorni fa`, `
-        <p class="note">Punti, misure, diario e impostazioni stanno solo in questo browser. Salvali in un file per non perderli o per passarli su un altro dispositivo. Le foto non ci sono: quando apri il file, aggiungi di nuovo le foto e i punti tornano.${MOBILE ? " Su iPhone Safari cancella i dati dei siti che non apri da una settimana: aggiungi la pagina alla schermata Home o salva spesso." : ""}</p>
-        <label class="switch"><span>Includi le foto di riferimento<small>Il file pesa di più e contiene quelle foto.</small></span><input type="checkbox" id="withRefs" checked></label>
+        <p class="note">Punti, misure, diario e impostazioni stanno solo in questo browser. Salvali in un file per non perderli o per passarli su un altro dispositivo. Nel file ci sono anche le foto salvate (riferimenti, partenza e Dopo); le altre no: quando apri il file, aggiungile di nuovo e i punti tornano.${MOBILE ? " Su iPhone Safari cancella i dati dei siti che non apri da una settimana: aggiungi la pagina alla schermata Home o salva spesso." : ""}</p>
+        <p class="note" id="keptLine">Foto salvate: …</p>
         <div class="data-actions">
           <button type="button" class="btn" id="exportBtn"><svg class="icon"><use href="#i-download"/></svg>Salva i progressi</button>
           <button type="button" class="btn ghost" id="importBtn">Carica un file</button>
@@ -3584,7 +3929,17 @@ function openSettings(first = false) {
     }));
     $("#presetBtn").addEventListener("click", () => { draft.measures = presetMeasures(draft.who, draft.framing); render(); });
     $("#defInput").addEventListener("change", (e) => { draft.definition = e.target.checked; render(); });
-    $("#exportBtn").addEventListener("click", async () => { await exportProgress($("#withRefs").checked); render(); });
+    $("#exportBtn").addEventListener("click", async () => { await exportProgress(); render(); });
+    // Quante foto salvate e quanto pesano: si legge dal browser, poi si scrive (se la finestra è ancora lì)
+    savedImages().then((items) => {
+      const line = $("#keptLine");
+      if (!line || !dlg.open) return;
+      const size = items.reduce((s, it) => s + b64Size(it.blob.size), 0);
+      line.innerHTML = items.length
+        ? `Foto salvate: ${esc(countOf(items.length, "foto", "foto"))}, circa ${esc(mbText(size))} nel file. <button type="button" class="link" id="keptManage">Vedi e togli</button>`
+        : "Nessuna foto salvata: la stella e la foto di partenza le salvano qui.";
+      $("#keptManage")?.addEventListener("click", async () => { await openKept("manage"); render(); });
+    });
     // Un file caricato porta anche le sue impostazioni: la finestra si chiude senza applicare le scelte fatte qui
     $("#importBtn").addEventListener("click", () => pickImport(() => { dlg.returnValue = ""; dlg.onclose = null; dlg.close(); }));
   };
@@ -3629,8 +3984,9 @@ $("#settingsCancel").addEventListener("click", () => $("#settingsDialog").close(
 
 // ------------------------------------------------------------------ salva e carica i progressi (file JSON)
 //
-// Nel file: impostazioni, punti, misure e ritocchi di ogni foto, il diario (peso e misure col metro) e,
-// se vuoi, le foto di riferimento.
+// Nel file: impostazioni, punti, misure e ritocchi di ogni foto, il diario (peso e misure col metro) e le foto
+// salvate: riferimenti (refs) e foto del confronto (kept, con i ruoli in keptRoles). Una foto che è in tutti e due
+// ha l'immagine una volta sola, in refs. Oltre FILE_WARN_BYTES si propone di toglierne qualcuna.
 // Le altre foto non ci sono: riaprendo il file si trascinano di nuovo e i punti tornano
 // (si ritrovano per nome e peso del file, o per data e ora di scatto).
 
@@ -3651,17 +4007,32 @@ function savedPhotoEntries() {
   return out;
 }
 
-async function exportProgress(withRefs) {
+async function exportProgress() {
   const photos = savedPhotoEntries();
-  let refs = [];
-  if (withRefs) {
-    try {
-      const all = (await idb("readonly", (st) => st.getAll())) || [];
-      refs = await Promise.all(all.map(async (r) => ({ key: r.key, name: r.name, date: r.date || "", stamp: r.stamp || "", image: await blobToDataURL(r.blob) })));
-    } catch { /* niente riferimenti */ }
+  const base = { app: "fitprogress", version: 1, exportedAt: new Date().toISOString(), settings, photos, diary, keptRoles: kept };
+  let items = await savedImages();
+  // Peso del file prima di scriverlo: se è troppo, scegli tu cosa togliere
+  const other = JSON.stringify(base).length;
+  const total = other + items.reduce((s, it) => s + b64Size(it.blob.size), 0);
+  let heavy = total > FILE_WARN_BYTES;
+  if (heavy) {
+    const r = await openKept("export", total, other);
+    if (r === "cancel") return;
+    if (r === "removed") {
+      items = await savedImages();
+      heavy = other + items.reduce((s, it) => s + b64Size(it.blob.size), 0) > FILE_WARN_BYTES;
+    }
   }
-  const data = { app: "fitprogress", version: 1, exportedAt: new Date().toISOString(), settings, photos, refs, diary };
-  const file = new File([JSON.stringify(data)], `fitprogress-${todayISO()}.json`, { type: "application/json" });
+  const meta = (it) => ({ key: it.key, name: it.name, date: it.date || "", stamp: it.stamp || "" });
+  const refs = [], keptOut = [];
+  try {
+    for (const it of items) {
+      if (it.ref) refs.push({ ...meta(it), image: await blobToDataURL(it.blob) });
+      if (it.kept) keptOut.push(it.ref ? meta(it) : { ...meta(it), image: await blobToDataURL(it.blob) });
+    }
+  } catch { toast("Non riesco a leggere le foto salvate"); return; }
+  const json = JSON.stringify({ ...base, refs, kept: keptOut });
+  const file = new File([json], `fitprogress-${todayISO()}.json`, { type: "application/json" });
   const n = Object.keys(photos).length;
   // Sul telefono si apre il foglio di condivisione (Salva su File, AirDrop…); sul computer si scarica
   if (MOBILE && navigator.canShare?.({ files: [file] })) {
@@ -3674,15 +4045,14 @@ async function exportProgress(withRefs) {
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   }
   try { localStorage.setItem(LAST_EXPORT_KEY, String(Date.now())); } catch { /* spazio pieno */ }
-  toast(`Salvati i progressi di ${savedWhat(n, diary.length, refs.length)}`);
+  toast(`Salvati i progressi di ${savedWhat(n, diary.length, items.length)}${heavy ? ` · file di ${mbText(json.length)}: pesante da spostare` : ""}`);
 }
-// "3 foto, 12 misurazioni e 1 riferimento": le foto si dicono sempre, tranne se c'è solo il diario
+// "12 foto (3 con l'immagine) e 5 misurazioni": le foto si dicono sempre, tranne se c'è solo il diario
 const countOf = (n, one, many) => n === 1 ? `1 ${one}` : `${n} ${many}`;
-function savedWhat(photos, entries, refs) {
+function savedWhat(photos, entries, images) {
   const xs = [
-    (photos || !entries) && countOf(photos, "foto", "foto"),
+    (photos || !entries) && `${countOf(photos, "foto", "foto")}${images ? ` (${images} con l'immagine)` : ""}`,
     entries && countOf(entries, "misurazione", "misurazioni"),
-    refs && countOf(refs, "riferimento", "riferimenti"),
   ].filter(Boolean);
   return xs.length > 1 ? `${xs.slice(0, -1).join(", ")} e ${xs[xs.length - 1]}` : xs[0];
 }
@@ -3748,21 +4118,32 @@ async function importProgress(file) {
     diary = cleanDiary([...diary, ...fileDiary]);
     if (!saveDiary()) diary = before;
   }
-  // Riferimenti: quelli del file prendono il posto di quelli di questo browser
-  const refs = (Array.isArray(data.refs) ? data.refs : []).filter((r) => validKey(r?.key) && typeof r.image === "string" && /^data:image\/(jpeg|png|webp);base64,/.test(r.image)).slice(0, MAX_REFS * POSE_KEYS_ALL.length);
-  if (refs.length) {
+  // Foto salvate: quelle del file prendono il posto di quelle di questo browser (riferimenti e foto del confronto
+  // ognuno per conto suo: un file senza foto del confronto lascia quelle che ci sono)
+  const isImage = (s) => typeof s === "string" && /^data:image\/(jpeg|png|webp);base64,/.test(s);
+  const allRefs = (Array.isArray(data.refs) ? data.refs : []).filter((r) => validKey(r?.key) && isImage(r.image));
+  const refs = allRefs.slice(0, MAX_REFS * POSE_KEYS_ALL.length);
+  // Una foto del confronto che è anche un riferimento ha l'immagine in refs
+  const refImage = new Map(allRefs.map((r) => [r.key, r.image]));
+  const keptIn = (Array.isArray(data.kept) ? data.kept : []).filter((r) => validKey(r?.key)).slice(0, 1000)
+    .map((r) => ({ ...r, image: isImage(r.image) ? r.image : refImage.get(r.key) })).filter((r) => r.image);
+  const record = async (r) => ({ key: r.key, name: String(r.name || "foto").slice(0, 200), date: validDate(r.date) ? r.date : "", stamp: typeof r.stamp === "string" ? r.stamp.slice(0, 19) : "", blob: await (await fetch(r.image)).blob(), savedAt: Date.now() });
+  for (const [store, list] of [["refs", refs], ["kept", keptIn]]) {
+    if (!list.length) continue;
     try {
-      await idb("readwrite", (st) => st.clear());
-      for (const r of refs) {
-        const blob = await (await fetch(r.image)).blob();
-        await idb("readwrite", (st) => st.put({ key: r.key, name: String(r.name || "riferimento").slice(0, 200), date: validDate(r.date) ? r.date : "", stamp: typeof r.stamp === "string" ? r.stamp.slice(0, 19) : "", blob, savedAt: Date.now() }));
-      }
-    } catch { toast("Non riesco a salvare i riferimenti in questo browser"); }
+      await idb("readwrite", (st) => st.clear(), store);
+      for (const r of list) { const rec = await record(r); await idb("readwrite", (st) => st.put(rec), store); }
+    } catch { toast("Non riesco a salvare le foto del file in questo browser"); }
+  }
+  if (keptIn.length || data.keptRoles) {
+    kept = cleanKeptRoles(data.keptRoles);
+    saveKeptRoles();
   }
   // Le foto già aperte riprendono i dati del file
   const open = state.photos, selectedKey = state.selected?.key;
   state.photos = [];
   state.refKeys = new Set();
+  state.selA = state.selB = null;
   try { for (const r of (await idb("readonly", (st) => st.getAll())) || []) state.refKeys.add(r.key); } catch { /* niente */ }
   for (const p of open) {
     p.proc?.close?.();
@@ -3771,11 +4152,12 @@ async function importProgress(file) {
   state.selected = state.photos.find((q) => q.key === selectedKey) || state.photos[0] || null;
   mapCache.clear();
   statsCache.clear();
-  await loadRefs();
+  await loadSaved();
   resetLogForm();
   refresh();
   processQueue();
-  toast(`Caricati i progressi di ${savedWhat(n, fileDiary.length, refs.length)}.${n && !state.photos.length ? " Ora trascina le foto: i punti tornano da soli." : ""}`);
+  const images = new Set([...refs, ...keptIn].map((r) => r.key)).size;
+  toast(`Caricati i progressi di ${savedWhat(n, fileDiary.length, images)}.${n > images ? " Trascina le altre foto: i punti tornano da soli." : ""}`);
   return true;
 }
 
@@ -3998,10 +4380,11 @@ function renderLogHistory() {
         <span class="top"><span class="d">${fmtDate(e.date)}</span>${delta}</span>
         <span class="vals">${esc(vals)}</span>${e.note ? `<span class="why">${esc(e.note)}</span>` : ""}
       </button>
+      <button type="button" class="btn ghost icon-only" data-edit="${e.date}" aria-label="Modifica la misurazione del ${fmtDate(e.date)}" title="Modifica"><svg class="icon"><use href="#i-pencil"/></svg></button>
       <button type="button" class="btn ghost icon-only" data-del="${e.date}" aria-label="Elimina la misurazione del ${fmtDate(e.date)}" title="Elimina"><svg class="icon"><use href="#i-x"/></svg></button>
     </li>`;
   }).join("");
-  box.innerHTML = `<div><h2 class="card-title">Storico</h2><div class="card-sub">${countOf(diary.length, "misurazione", "misurazioni")}. Tocca una riga per modificarla.</div></div>
+  box.innerHTML = `<div><h2 class="card-title">Storico</h2><div class="card-sub">${countOf(diary.length, "misurazione", "misurazioni")}. Per modificarne una tocca la riga o la matita.</div></div>
     <ul class="log-list">${items}</ul>${backup}`;
   box.querySelectorAll("[data-edit]").forEach((b) => b.addEventListener("click", () => {
     resetLogForm(b.dataset.edit);
@@ -4155,7 +4538,7 @@ window.addEventListener("drop", (e) => {
 // Sul telefono anche l'analisi parte chiusa: il riassunto dice già com'è andata, si apre a richiesta
 if (MOBILE) $("#accAnalysis").open = false;
 refresh();
-loadRefs().then(() => { refresh(); processQueue(); });
+loadSaved().then(() => { refresh(); processQueue(); });
 if (!settingsSaved) openSettings(true);
 </script>
 </body>
