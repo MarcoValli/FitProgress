@@ -4416,14 +4416,10 @@ async function exportProgress() {
   // Peso del file prima di scriverlo: se è troppo, scegli tu cosa togliere
   const other = JSON.stringify(base).length;
   const total = other + items.reduce((s, it) => s + b64Size(it.blob.size), 0);
-  let heavy = total > FILE_WARN_BYTES;
-  if (heavy) {
+  if (total > FILE_WARN_BYTES) {
     const r = await openKept("export", total, other);
     if (r === "cancel") return;
-    if (r === "removed") {
-      items = await savedImages();
-      heavy = other + items.reduce((s, it) => s + b64Size(it.blob.size), 0) > FILE_WARN_BYTES;
-    }
+    if (r === "removed") items = await savedImages();
   }
   const meta = (it) => ({ key: it.key, name: it.name, date: it.date || "", stamp: it.stamp || "" });
   const refs = [], keptOut = [];
@@ -4437,21 +4433,22 @@ async function exportProgress() {
   const file = new File([json], `fitprogress-${todayISO()}.json`, { type: "application/json" });
   const n = Object.keys(photos).length;
   const what = savedWhat(n, diary.length, items.length);
-  const done = (how) => {
+  // Salvato davvero (condiviso o scaricato): solo allora si segna e si dice
+  const done = () => {
     try { localStorage.setItem(LAST_EXPORT_KEY, String(Date.now())); } catch { /* spazio pieno */ }
-    toast(`${how} i progressi di ${what}${heavy ? ` · file di ${mbText(json.length)}: pesante da spostare` : ""}`);
+    toast("Salvataggio riuscito");
     return true;
   };
   // Sul telefono il foglio di condivisione (Salva su File, AirDrop…). Il browser lo apre solo subito dopo un tocco:
   // preparare il file (leggere le foto salvate) richiede tempo, quindi serve un secondo tocco su "Salva il file"
   if (MOBILE && navigator.canShare?.({ files: [file] })) {
     const how = await askShare(file, what);
-    if (how === "share") return done("Salvati");
-    if (how === "download") { downloadFile(file); return done("Scaricati"); }
+    if (how === "share") return done();
+    if (how === "download") { downloadFile(file); return done(); }
     return false;
   }
   downloadFile(file);
-  return done("Scaricati");
+  return done();
 }
 function downloadFile(file) {
   const a = document.createElement("a");
