@@ -3687,7 +3687,7 @@ function startGesture() {
 }
 edCanvas.addEventListener("pointerdown", (e) => {
   if (!edPhoto()) return;
-  edCanvas.setPointerCapture(e.pointerId);
+  try { edCanvas.setPointerCapture(e.pointerId); } catch { /* puntatore già finito: il gesto va lo stesso */ }
   edPointers.set(e.pointerId, [e.clientX, e.clientY]);
   edCanvas.classList.add("dragging");
   startGesture();

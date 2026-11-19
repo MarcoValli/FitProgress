@@ -13,7 +13,7 @@ Confronto delle foto dei progressi in palestra, tutto in una pagina HTML.
 
 - Riconosce da solo la posa (di fronte, di lato, di schiena), trova i punti per allineare le foto e prende le misure dalla sagoma della persona. Se qualcosa è fuori posto lo trascini. In manuale scegli quali punti usare e li metti nella prima foto, le altre si allineano da sole.
 - Confronta le foto con cursore, affiancate, sfumate o differenze. Il Dopo si riallinea sul Prima ogni volta che cambi foto, confrontando le due immagini.
-- Ritocco a mano a tutto schermo: Prima e Dopo sovrapposti, strumenti in basso (sposta, dimensione, rotazione, luce, contrasto), il risultato si vede subito e OK salva.
+- Ritocco a mano a tutto schermo: Prima e Dopo sovrapposti, strumenti in basso (sposta, dimensione, rotazione, luce, contrasto), il risultato si vede subito e OK salva. Niente limiti stretti: i valori si scrivono o si cambiano con − e +, e sulla foto si trascina, si pizzica e si gira con due dita (o rotella e trackpad).
 - Misura le larghezze scelte nelle impostazioni (spalle, vita, fianchi…) e la definizione muscolare, con un margine d'errore.
 - Propone una foto di riferimento e una guida per rifare le foto sempre uguali.
 - Quando aggiungi le foto ti propone, per ogni posa, tre foto di partenza fra le più vecchie, o la scegli tu. Nel confronto è il Prima; il Dopo è la foto più recente più adatta alla partenza. Tutte e due restano salvate (anche i Dopo delle volte prima), così riaprendo la pagina il confronto c'è già.
