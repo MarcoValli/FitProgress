@@ -1,0 +1,2971 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#151518">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="FitProgress">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<title>FitProgress</title>
+<!--
+  FitProgress: confronto delle foto dei progressi in palestra.
+  Tutto resta nel browser: le foto non vengono caricate da nessuna parte.
+  Unica connessione: in Chrome/Firefox, alla prima foto HEIC si scarica il convertitore
+  (heic-to/libheif da jsDelivr, versione e impronta fisse). Safari non ne ha bisogno.
+  Punti, posa e regolazioni si salvano nel browser (localStorage), legati a nome e
+  dimensione del file: riaprendo la pagina e trascinando le stesse foto si ritrovano.
+-->
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0e0e10;
+    --panel: #151518;
+    --raised: #1d1d21;
+    --hover: #26262b;
+    --border: #2a2a30;
+    --border-strong: #3a3a42;
+    --text: #f2f2f4;
+    --muted: #9b9ba5;
+    --faint: #6c6c76;
+    --accent: #4f8cff;
+    --accent-soft: rgba(79, 140, 255, .16);
+    --align: #4cc2ff;
+    --measure: #ffa24c;
+    --ok: #4fd18b;
+    --danger: #ff6b6b;
+    --radius: 10px;
+    --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; font: 13px/1.45 var(--font); background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; }
+  button, input, select { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  [hidden] { display: none !important; }
+  svg.icon { width: 16px; height: 16px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* ---------- controlli ---------- */
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--border-strong); background: var(--raised); cursor: pointer; white-space: nowrap; transition: background .12s, border-color .12s; }
+  .btn:hover:not(:disabled) { background: var(--hover); }
+  .btn:disabled { opacity: .4; cursor: default; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .btn.primary:hover:not(:disabled) { background: #3d7cf5; }
+  .btn.ghost { background: transparent; border-color: transparent; color: var(--muted); }
+  .btn.ghost:hover:not(:disabled) { background: var(--hover); color: var(--text); }
+  .btn.icon-only { width: 32px; padding: 0; }
+  .btn[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: #cfe0ff; }
+
+  .segmented { display: inline-flex; padding: 3px; gap: 2px; border-radius: 9px; background: var(--raised); border: 1px solid var(--border); }
+  .segmented button { height: 26px; padding: 0 12px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; font-weight: 500; }
+  .segmented button:hover:not(:disabled) { color: var(--text); }
+  .segmented button[aria-selected="true"], .segmented button[aria-pressed="true"] { background: var(--hover); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.4); }
+  .segmented button:disabled { opacity: .35; cursor: default; }
+  .segmented.full { display: flex; }
+  .segmented.full button { flex: 1 1 auto; padding: 0 8px; }
+
+  .field { display: grid; gap: 6px; }
+  .field > span { color: var(--muted); font-size: 12px; }
+  .input { height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--border-strong); background: var(--raised); width: 100%; }
+  select.input { appearance: none; padding-right: 28px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239b9ba5' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+  input[type="range"] { -webkit-appearance: none; appearance: none; width: 100%; height: 20px; background: transparent; cursor: pointer; }
+  input[type="range"]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: var(--border-strong); }
+  input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; margin-top: -6px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.5); }
+  input[type="range"]::-moz-range-track { height: 4px; border-radius: 2px; background: var(--border-strong); }
+  input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; border: 0; border-radius: 50%; background: #fff; }
+  .slider { display: grid; grid-template-columns: 74px 1fr 42px; align-items: center; gap: 8px; color: var(--muted); }
+  .slider output { text-align: right; font-variant-numeric: tabular-nums; color: var(--text); }
+
+  .switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; }
+  .switch input { appearance: none; width: 34px; height: 20px; border-radius: 10px; background: var(--border-strong); position: relative; cursor: pointer; transition: background .15s; flex-shrink: 0; }
+  .switch input::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s; }
+  .switch input:checked { background: var(--accent); }
+  .switch input:checked::after { transform: translateX(14px); }
+
+  .pill { display: inline-flex; align-items: center; gap: 4px; height: 18px; padding: 0 7px; border-radius: 9px; font-size: 11px; font-weight: 500; background: var(--hover); color: var(--muted); }
+  .pill.blue { background: rgba(76, 194, 255, .14); color: var(--align); }
+  .pill.green { background: rgba(79, 209, 139, .14); color: var(--ok); }
+  .pill.yellow { background: rgba(255, 162, 76, .14); color: var(--measure); }
+  .pill.red { background: rgba(255, 107, 107, .14); color: var(--danger); }
+  .pill.accent { background: var(--accent-soft); color: #9cc0ff; }
+  .pill svg { width: 11px; height: 11px; }
+  .pills { display: flex; gap: 4px; flex-wrap: wrap; }
+
+  /* ---------- struttura ---------- */
+  .topbar { height: 56px; display: flex; align-items: center; gap: 16px; padding: 0 16px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  .brand { display: flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 650; letter-spacing: -.01em; }
+  .brand-mark { width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; background: linear-gradient(135deg, #4f8cff, #8b5cf6); color: #fff; }
+  .brand-mark svg { width: 15px; height: 15px; }
+  .spacer { flex: 1; }
+
+  .layout { height: calc(100vh - 56px); display: grid; grid-template-columns: 272px minmax(0, 1fr) 340px; }
+  .layout.is-empty { grid-template-columns: 1fr; }
+  .layout.is-empty .sidebar, .layout.is-empty .inspector { display: none; }
+
+  .sidebar { border-right: 1px solid var(--border); background: var(--panel); overflow-y: auto; padding: 12px 10px 24px; }
+  .group-title { display: flex; justify-content: space-between; align-items: center; padding: 10px 8px 6px; color: var(--muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+  .row { position: relative; }
+  .item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px; border: 1px solid transparent; border-radius: 9px; background: transparent; text-align: left; cursor: pointer; }
+  .item:hover { background: var(--raised); }
+  .item[aria-current="true"] { background: var(--raised); border-color: var(--border-strong); }
+  .item img { width: 46px; height: 62px; border-radius: 6px; object-fit: cover; background: #000; flex-shrink: 0; }
+  .item .txt { min-width: 0; display: grid; gap: 3px; }
+  .item .date { font-weight: 600; }
+  .item .name { color: var(--faint); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .remove { position: absolute; top: 8px; right: 6px; width: 24px; height: 24px; border-radius: 6px; border: 0; background: var(--hover); color: var(--muted); cursor: pointer; display: grid; place-items: center; opacity: 0; }
+  .remove svg { width: 13px; height: 13px; }
+  .row:hover .remove, .remove:focus-visible { opacity: 1; }
+  .remove:hover { color: var(--danger); }
+  @media (hover: none) { .remove { opacity: 1; } }
+
+  .canvas-area { position: relative; min-width: 0; overflow: auto; display: flex; align-items: center; justify-content: center; padding: 24px; background: radial-gradient(circle at 50% 0%, #17171c, var(--bg) 70%); }
+  .frame { position: relative; display: inline-block; line-height: 0; border-radius: 8px; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,.5), 0 0 0 1px var(--border); }
+  #editCanvas { display: block; max-width: 100%; max-height: calc(100vh - 56px - 48px); cursor: crosshair; touch-action: none; }
+  #compareCanvas { display: block; max-width: 100%; max-height: calc(100vh - 56px - 48px); touch-action: pan-y; }
+  #compareCanvas.wipe { touch-action: none; }
+  #compareCanvas.wipe { cursor: ew-resize; }
+  .coach { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); max-width: calc(100% - 24px); padding: 8px 14px; border-radius: 999px; background: rgba(14, 14, 16, .82); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.1); line-height: 1.35; font-size: 13px; text-align: center; pointer-events: none; }
+  .coach b { color: var(--align); font-weight: 600; }
+  .coach.measure b { color: var(--measure); }
+  .coach.done { color: var(--ok); }
+  #loupe { position: absolute; width: 150px; height: 150px; border-radius: 50%; border: 2px solid rgba(255,255,255,.85); box-shadow: 0 6px 24px rgba(0,0,0,.6); pointer-events: none; }
+
+  .inspector { border-left: 1px solid var(--border); background: var(--panel); overflow-y: auto; }
+  .section { padding: 16px; border-bottom: 1px solid var(--border); display: grid; gap: 12px; }
+  .section-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .section-title { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .photo-title { font-size: 17px; font-weight: 650; letter-spacing: -.01em; }
+  .photo-sub { color: var(--faint); font-size: 12px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+  .steps li { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 8px; color: var(--faint); }
+  .steps li .num { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 700; border: 1.5px solid var(--border-strong); flex-shrink: 0; }
+  .steps li.done { color: var(--text); }
+  .steps li.done .num { border-color: transparent; background: var(--c); color: #0e0e10; }
+  .steps li.current { background: var(--raised); color: var(--text); }
+  .steps li.current .num { border-color: var(--c); color: var(--c); }
+  .steps li .opt { margin-left: auto; font-size: 11px; color: var(--faint); }
+  .steps.align { --c: var(--align); }
+  .steps.measure { --c: var(--measure); }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  .note { color: var(--muted); font-size: 12px; line-height: 1.5; }
+  .results table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  .results th, .results td { padding: 7px 4px; border-bottom: 1px solid var(--border); text-align: right; }
+  .results th:first-child, .results td:first-child { text-align: left; }
+  .results th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  .up { color: var(--ok); }
+  .down { color: var(--measure); }
+  .chart { width: 100%; height: auto; display: block; }
+
+  /* ---------- impostazioni ---------- */
+  .dialog { width: min(660px, calc(100vw - 32px)); max-height: calc(100vh - 48px); padding: 0; border: 1px solid var(--border-strong); border-radius: 14px; background: var(--panel); color: var(--text); box-shadow: 0 24px 70px rgba(0,0,0,.65); }
+  .dialog::backdrop { background: rgba(0,0,0,.6); }
+  .dialog form { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; max-height: calc(100vh - 48px); }
+  .dialog header { padding: 20px 22px 4px; }
+  .dialog h2 { margin: 0 0 4px; font-size: 18px; letter-spacing: -.01em; }
+  .dialog .intro { margin: 0; color: var(--muted); }
+  .dialog .body:focus, .dialog .body:focus-visible { outline: none; }
+  .coach.away { visibility: hidden; }
+  .dialog .body { overflow: auto; padding: 14px 22px 18px; display: grid; gap: 18px; }
+  .dialog footer { padding: 14px 22px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
+  .dialog fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 10px; min-width: 0; }
+  .dialog legend { padding: 0; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; width: 100%; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .choice { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }
+  .choice label { position: relative; display: grid; gap: 2px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border-strong); background: var(--raised); cursor: pointer; }
+  .choice label:hover { background: var(--hover); }
+  .choice input { position: absolute; opacity: 0; pointer-events: none; }
+  .choice label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+  .choice label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .choice b { font-weight: 600; }
+  .choice span { color: var(--muted); font-size: 12px; }
+  .checks { display: grid; grid-template-columns: 96px 1fr; gap: 10px 12px; align-items: start; }
+  .checks .pose { color: var(--muted); padding-top: 5px; }
+  .checks .opts { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { position: relative; }
+  .chip input { position: absolute; opacity: 0; pointer-events: none; }
+  .chip span { display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: 14px; border: 1px solid var(--border-strong); background: var(--raised); color: var(--muted); cursor: pointer; }
+  .chip input:checked + span { border-color: var(--accent); background: var(--accent-soft); color: #cfe0ff; }
+  .chip input:checked + span::before { content: "✓"; margin-right: 6px; font-weight: 700; }
+  .chip input:disabled + span { opacity: .35; cursor: default; }
+  .chip input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .link { border: 0; background: none; color: var(--accent); cursor: pointer; padding: 0; font: inherit; font-size: 12px; text-transform: none; letter-spacing: 0; font-weight: 500; }
+  .link:hover { text-decoration: underline; }
+  .warn { margin: 0; padding: 8px 10px; border-radius: 8px; background: rgba(255,162,76,.12); color: #ffc58f; font-size: 12px; }
+  .switch small { display: block; color: var(--faint); font-size: 11.5px; margin-top: 2px; }
+
+  /* ---------- guida e consigli ---------- */
+  .tips { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .tips li { display: grid; grid-template-columns: 18px 1fr; gap: 8px; line-height: 1.45; }
+  .tips li::before { content: "→"; color: var(--measure); font-weight: 700; }
+  .tips li.ok::before { content: "✓"; color: var(--ok); }
+  .steps-guide { margin: 0; padding: 0 0 0 18px; display: grid; gap: 8px; line-height: 1.45; }
+  .steps-guide b { font-weight: 650; }
+  .suggest { display: flex; gap: 10px; align-items: center; padding: 8px; border-radius: 10px; background: var(--raised); border: 1px solid var(--border); }
+  .suggest img { width: 46px; height: 62px; border-radius: 6px; object-fit: cover; }
+  .suggest .txt { flex: 1; min-width: 0; display: grid; gap: 2px; }
+  .suggest .sub { color: var(--faint); font-size: 11.5px; }
+  #guideCanvas { display: block; max-width: 100%; max-height: calc(100vh - 56px - 48px); }
+
+  /* ---------- analisi ---------- */
+  .lead { font-size: 13.5px; line-height: 1.55; margin: 0; }
+  .lead b { font-weight: 650; }
+  .meta { color: var(--faint); font-size: 12px; margin-top: -6px; }
+  .metrics { display: grid; gap: 6px; }
+  .metric { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 12px; border-radius: 10px; background: var(--raised); border: 1px solid var(--border); }
+  .metric .name { font-weight: 550; }
+  .metric .sub { color: var(--faint); font-size: 11.5px; margin-top: 1px; }
+  .metric .right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .metric .val { font-size: 16px; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .metric.no .val { color: var(--faint); }
+  .caveats { margin: 0; padding: 0 0 0 16px; color: var(--muted); font-size: 12px; display: grid; gap: 4px; }
+  .qlist { list-style: none; margin: 0 -8px; padding: 0; display: grid; gap: 2px; }
+  .qlist li { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px 10px; padding: 7px 8px; border-radius: 8px; }
+  .qlist li:hover { background: var(--raised); }
+  .qlist .top { display: flex; align-items: center; gap: 8px; }
+  .qlist .d { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .qlist .why { grid-column: 1; color: var(--faint); font-size: 11.5px; }
+  .qlist li.off .d { color: var(--faint); text-decoration: line-through; }
+  .qlist .switch { grid-row: 1 / span 2; grid-column: 2; }
+
+  /* ---------- vuoto ---------- */
+  .empty { width: min(560px, 100%); text-align: center; }
+  .drop { border: 1.5px dashed var(--border-strong); border-radius: 16px; padding: 44px 32px 36px; background: rgba(255,255,255,.015); }
+  .drop-icon { width: 56px; height: 56px; margin: 0 auto 16px; border-radius: 14px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); }
+  .drop-icon svg { width: 26px; height: 26px; }
+  .empty h2 { font-size: 20px; margin: 0 0 6px; letter-spacing: -.01em; }
+  .empty p { color: var(--muted); margin: 0 0 20px; }
+  .how { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 20px; text-align: left; }
+  .how div { padding: 14px; border-radius: 12px; background: var(--panel); border: 1px solid var(--border); }
+  .how b { display: block; margin-bottom: 4px; }
+  .how span { color: var(--muted); font-size: 12px; }
+  .empty-compare { color: var(--muted); text-align: center; max-width: 360px; }
+
+  .empty-links { margin: 14px 0 0 !important; font-size: 12.5px; }
+  .empty-links .link { font-size: 12.5px; }
+
+  /* ---------- consigli per le foto ---------- */
+  .tips-body h3 { margin: 0 0 6px; font-size: 14px; }
+  .tips-body section { display: grid; gap: 4px; }
+  .tips-body ul { margin: 0; padding-left: 18px; display: grid; gap: 5px; line-height: 1.5; color: #dcdce2; }
+  .tips-body .poses { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+  .tips-body .pose-card { padding: 12px; border-radius: 10px; background: var(--raised); border: 1px solid var(--border); display: grid; gap: 6px; }
+  .tips-body .pose-card ul { padding-left: 16px; font-size: 12.5px; }
+  .tips-body .pose-card svg { width: 44px; height: 64px; color: var(--accent); }
+  .tips-body .save { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border-strong); color: var(--muted); font-size: 12.5px; }
+  .data-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px); opacity: 0; padding: 10px 16px; border-radius: 10px; background: #2a2a30; border: 1px solid var(--border-strong); box-shadow: 0 8px 30px rgba(0,0,0,.5); transition: opacity .2s, transform .2s; pointer-events: none; max-width: 90vw; }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+  /* ---------- telefono ---------- */
+  @media (pointer: coarse) { .kbd-hint { display: none; } }
+  @media (max-width: 860px) {
+    html, body { height: auto; }
+    body { min-height: 100dvh; }
+    .topbar { position: sticky; top: 0; z-index: 5; height: auto; flex-wrap: wrap; gap: 8px; padding: max(8px, env(safe-area-inset-top)) 12px 8px; }
+    .topbar nav { order: 3; display: flex; width: 100%; }
+    .topbar nav button { flex: 1; }
+    .topbar .lbl { display: none; }
+    #addBtn, #tipsBtn { width: 36px; padding: 0; }
+    .brand { font-size: 14px; }
+    .layout, .layout.is-empty { height: auto; display: flex; flex-direction: column; }
+    .sidebar { display: flex; align-items: stretch; gap: 6px; overflow-x: auto; overflow-y: hidden; padding: 8px 10px; border-right: 0; border-bottom: 1px solid var(--border); scroll-snap-type: x proximity; }
+    .group-title { flex: 0 0 auto; writing-mode: vertical-rl; transform: rotate(180deg); padding: 4px 2px; justify-content: center; gap: 6px; font-size: 10px; }
+    .row { flex: 0 0 auto; scroll-snap-align: start; }
+    .item { flex-direction: column; align-items: flex-start; width: 92px; padding: 5px; gap: 5px; }
+    .item img { width: 80px; height: 104px; }
+    .item .name { display: none; }
+    .item .date { font-size: 12px; }
+    .item .pill { font-size: 10px; height: 16px; padding: 0 5px; }
+    .remove { top: 8px; right: 8px; opacity: 1; background: rgba(14,14,16,.75); }
+    .canvas-area { padding: 10px; overflow: visible; }
+    #editCanvas, #compareCanvas, #guideCanvas { max-height: 62dvh; }
+    .coach { top: 8px; padding: 6px 10px; border-radius: 12px; font-size: 12px; }
+    .inspector { border-left: 0; overflow: visible; padding-bottom: env(safe-area-inset-bottom); }
+    .how { grid-template-columns: 1fr; }
+    .drop { padding: 28px 18px 24px; }
+    .input, select, input[type="date"] { font-size: 16px; }
+    .dialog { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; margin: 0; border: 0; border-radius: 0; }
+    .dialog form { height: 100%; max-height: 100dvh; }
+    .dialog header { padding-top: max(18px, env(safe-area-inset-top)); }
+    .dialog footer { padding-bottom: max(14px, env(safe-area-inset-bottom)); }
+    .checks { grid-template-columns: 1fr; gap: 6px; }
+    .checks .pose { padding-top: 6px; }
+    .toast { bottom: max(16px, env(safe-area-inset-bottom)); }
+  }
+
+  body.dragging::after { content: "Rilascia le foto"; position: fixed; inset: 0; display: grid; place-items: center; font-size: 20px; font-weight: 600; background: rgba(79, 140, 255, .1); border: 2px dashed var(--accent); pointer-events: none; z-index: 10; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></symbol>
+  <symbol id="i-reset" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></symbol>
+  <symbol id="i-flip" viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M8 7 3 12l5 5V7z"/><path d="M16 7l5 5-5 5V7z"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></symbol>
+  <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6.3 6.3l2.5 2.5M15.2 15.2l2.5 2.5M6.3 17.7l2.5-2.5M15.2 8.8l2.5-2.5"/></symbol>
+  <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+  <symbol id="i-logo" viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></symbol>
+</svg>
+
+<header class="topbar">
+  <div class="brand"><span class="brand-mark"><svg class="icon"><use href="#i-logo"/></svg></span>FitProgress</div>
+  <nav class="segmented" role="tablist" aria-label="Sezione">
+    <button role="tab" id="tabPrepare" aria-selected="true">Prepara</button>
+    <button role="tab" id="tabCompare" aria-selected="false" disabled>Confronta</button>
+    <button role="tab" id="tabGuide" aria-selected="false" disabled>Guida foto</button>
+  </nav>
+  <div class="spacer"></div>
+  <button class="btn ghost" id="tipsBtn" title="Come fare le foto"><svg class="icon"><use href="#i-camera"/></svg><span class="lbl">Come fare le foto</span></button>
+  <button class="btn ghost icon-only" id="settingsBtn" aria-label="Impostazioni e salvataggio" title="Impostazioni e salvataggio"><svg class="icon"><use href="#i-gear"/></svg></button>
+  <button class="btn primary" id="addBtn" aria-label="Aggiungi foto"><svg class="icon"><use href="#i-plus"/></svg><span class="lbl">Aggiungi foto</span></button>
+  <input type="file" id="importInput" accept="application/json,.json" hidden>
+  <input type="file" id="fileInput" accept="image/*,.heic,.heif" multiple hidden>
+</header>
+
+<main class="layout is-empty" id="layout">
+  <aside class="sidebar" id="sidebar" aria-label="Foto"></aside>
+
+  <section class="canvas-area" id="canvasArea">
+    <div class="empty" id="emptyView">
+      <div class="drop">
+        <div class="drop-icon"><svg class="icon"><use href="#i-image"/></svg></div>
+        <h2>Trascina qui le foto</h2>
+        <p>JPG, PNG, HEIC e screenshot: le bande bianche si tolgono da sole. Le foto restano sul tuo dispositivo.</p>
+        <button class="btn primary" id="addBtn2"><svg class="icon"><use href="#i-plus"/></svg>Scegli le foto</button>
+        <p class="empty-links"><button type="button" class="link" id="importLink">Ho già un file dei progressi</button> · <button type="button" class="link" id="tipsLink">Come fare le foto</button></p>
+      </div>
+      <div class="how">
+        <div><b>1 · Posa e data</b><span>Data dal nome del file (2026-01-10.png) o a mano.</span></div>
+        <div><b>2 · Allinea</b><span>Una foto a mano, le altre in automatico.</span></div>
+        <div><b>3 · Confronta</b><span>Cursore, affiancate o in trasparenza.</span></div>
+      </div>
+    </div>
+
+    <div class="frame" id="editFrame" hidden>
+      <canvas id="editCanvas"></canvas>
+      <div class="coach" id="coach" aria-live="polite"></div>
+      <canvas id="loupe" width="300" height="300" hidden></canvas>
+    </div>
+
+    <div class="frame" id="compareFrame" hidden><canvas id="compareCanvas"></canvas></div>
+    <div class="frame" id="guideFrame" hidden><canvas id="guideCanvas"></canvas></div>
+    <p class="empty-compare" id="compareEmpty" hidden></p>
+  </section>
+
+  <aside class="inspector" id="inspector">
+    <!-- Prepara -->
+    <div id="prepareInspector">
+      <div class="section">
+        <div>
+          <div class="photo-title" id="photoTitle"></div>
+          <div class="photo-sub" id="photoSub"></div>
+        </div>
+        <div class="row2">
+          <label class="field"><span>Data</span><input class="input" type="date" id="dateInput"></label>
+          <label class="field"><span>Posa</span><select class="input" id="poseInput"></select></label>
+        </div>
+        <button class="btn" id="refBtn" aria-pressed="false"><svg class="icon"><use href="#i-star"/></svg><span>Usa come riferimento</span></button>
+      </div>
+      <div class="section" id="coachSection" hidden>
+        <span class="section-title">Rispetto al riferimento</span>
+        <ul class="tips" id="coachTips"></ul>
+      </div>
+
+      <div class="section">
+        <div class="segmented full" role="group" aria-label="Punti">
+          <button id="modeAlign" aria-pressed="true">Allineamento</button>
+          <button id="modeMeasure" aria-pressed="false">Misure</button>
+        </div>
+        <ol class="steps" id="steps"></ol>
+        <div class="actions">
+          <button class="btn" id="undoBtn"><svg class="icon"><use href="#i-undo"/></svg>Annulla punto</button>
+          <button class="btn ghost" id="clearBtn"><svg class="icon"><use href="#i-reset"/></svg>Ricomincia</button>
+          <button class="btn ghost" id="skipBtn" hidden>Salta</button>
+          <button class="btn" id="confirmBtn" hidden>Sono giusti</button>
+          <button class="btn ghost" id="autoBtn" hidden><svg class="icon"><use href="#i-sparkle"/></svg>Rifai in automatico</button>
+        </div>
+        <p class="note" id="stepNote"></p>
+      </div>
+
+      <div class="section">
+        <div class="section-head">
+          <span class="section-title">Regola foto</span>
+          <button class="btn ghost" id="resetAdjust">Ripristina</button>
+        </div>
+        <button class="btn" id="flipBtn" aria-pressed="false"><svg class="icon"><use href="#i-flip"/></svg>Specchia</button>
+        <label class="slider"><span>Luce</span><input type="range" id="brightInput" min="-50" max="50" value="0"><output id="brightOut">0</output></label>
+        <label class="slider"><span>Contrasto</span><input type="range" id="contrastInput" min="-50" max="50" value="0"><output id="contrastOut">0</output></label>
+      </div>
+    </div>
+
+    <!-- Guida -->
+    <div id="guideInspector" hidden></div>
+
+    <!-- Confronta -->
+    <div id="compareInspector" hidden>
+      <div class="section">
+        <label class="field"><span>Posa</span><select class="input" id="comparePose"></select></label>
+        <div class="row2">
+          <label class="field"><span>Prima</span><select class="input" id="selA"></select></label>
+          <label class="field"><span>Dopo</span><select class="input" id="selB"></select></label>
+        </div>
+      </div>
+      <div class="section">
+        <span class="section-title">Vista</span>
+        <div class="segmented full" role="group" aria-label="Vista">
+          <button data-cmode="wipe" aria-pressed="true">Cursore</button>
+          <button data-cmode="side" aria-pressed="false">Affiancate</button>
+          <button data-cmode="fade" aria-pressed="false">Sfumate</button>
+          <button data-cmode="diff" aria-pressed="false" title="Dove è cambiata la definizione">Differenze</button>
+        </div>
+        <label class="slider" id="valueGroup"><span id="valueLabel">Cursore</span><input type="range" id="valueInput" min="0" max="100" value="50"><output id="valueOut">50%</output></label>
+        <label class="switch"><span>Linee guida</span><input type="checkbox" id="guidesInput"></label>
+        <button class="btn" id="downloadBtn"><svg class="icon"><use href="#i-download"/></svg>Scarica immagine</button>
+      </div>
+      <div class="section" id="tweakSection">
+        <div class="section-head">
+          <span class="section-title">Ritocca a mano</span>
+          <button class="btn ghost" id="tweakReset">Azzera</button>
+        </div>
+        <div class="segmented full" role="group" aria-label="Foto da ritoccare">
+          <button data-tweak="A" aria-pressed="false">Prima</button>
+          <button data-tweak="B" aria-pressed="true">Dopo</button>
+        </div>
+        <label class="slider"><span>Dimensione</span><input type="range" data-t="s" min="-15" max="15" step="0.5" value="0"><output data-o="s">0%</output></label>
+        <label class="slider"><span>Rotazione</span><input type="range" data-t="r" min="-10" max="10" step="0.25" value="0"><output data-o="r">0°</output></label>
+        <label class="slider"><span>Orizzontale</span><input type="range" data-t="x" min="-40" max="40" step="1" value="0"><output data-o="x">0</output></label>
+        <label class="slider"><span>Verticale</span><input type="range" data-t="y" min="-40" max="40" step="1" value="0"><output data-o="y">0</output></label>
+        <p class="note">Si vede meglio con Sfumate.<span class="kbd-hint"> Da tastiera: frecce per spostare, + e − per la dimensione, &lt; e &gt; per ruotare.</span></p>
+      </div>
+      <div class="section" id="analysis"></div>
+      <div class="section" id="quality"></div>
+      <div class="section results" id="results"></div>
+    </div>
+  </aside>
+</main>
+<div class="toast" id="toast" role="status"></div>
+
+<dialog class="dialog" id="tipsDialog" aria-labelledby="tipsTitle">
+  <form method="dialog">
+    <header><h2 id="tipsTitle">Come fare le foto</h2><p class="intro">Foto fatte sempre uguali contano più di qualunque analisi.</p></header>
+    <div class="body tips-body"></div>
+    <footer><button class="btn primary" value="close">Ho capito</button></footer>
+  </form>
+</dialog>
+
+<dialog class="dialog" id="settingsDialog" aria-labelledby="settingsTitle">
+  <form method="dialog">
+    <header><h2 id="settingsTitle">Impostazioni</h2><p class="intro"></p></header>
+    <div class="body"></div>
+    <footer>
+      <button class="btn" type="button" id="settingsCancel">Annulla</button>
+      <button class="btn primary" value="save" id="settingsSave">Salva</button>
+    </footer>
+  </form>
+</dialog>
+
+<script>
+"use strict";
+
+// ------------------------------------------------------------------ impostazioni e pose
+//
+// Le impostazioni (chi usa l'app, come fa le foto, cosa misurare) decidono i punti per
+// allineare, le misure e la tela del confronto. Le foto si confrontano solo con foto della
+// stessa posa.
+
+const SETTINGS_KEY = "progressi:settings";
+
+// Misure possibili per posa. "where" completa il suggerimento del clic, "talk" va nel riassunto
+const MEASURES = {
+  front: {
+    shoulders: { name: "Spalle", where: "il punto più largo delle spalle, sul deltoide", talk: ["spalle più larghe", "spalle più strette"] },
+    chest: { name: "Torace", where: { male: "all'altezza dei capezzoli, sotto le ascelle", female: "subito sotto il seno", custom: "sotto le ascelle, all'altezza del petto" }, talk: ["torace più largo", "torace più stretto"] },
+    arm: { name: "Braccio", where: "il braccio lontano dal telefono, nel punto più largo", talk: ["braccia più grosse", "braccia più sottili"] },
+    waist: { name: "Vita", where: { male: "all'altezza dell'ombelico", female: "nel punto più stretto", custom: "nel punto più stretto" }, talk: ["vita più larga", "vita più stretta"] },
+    hips: { name: "Fianchi", where: "il punto più largo di fianchi e glutei", talk: ["fianchi più larghi", "fianchi più stretti"] },
+    thigh: { name: "Coscia", where: "una coscia nel punto più largo, subito sotto l'inguine", talk: ["cosce più piene", "cosce più sottili"], full: true },
+  },
+  side: {
+    chest: { name: "Petto", where: { male: "all'altezza del capezzolo", female: "nel punto più sporgente del seno", custom: "nel punto più sporgente del petto" }, talk: ["petto più pieno", "petto più piatto"] },
+    waist: { name: "Pancia", where: "all'altezza dell'ombelico", talk: ["pancia più in fuori", "pancia più piatta"] },
+    glutes: { name: "Glutei", where: "nel punto più sporgente dei glutei", talk: ["glutei più pieni", "glutei più piatti"] },
+  },
+  back: {
+    back: { name: "Dorsali", where: "dove la schiena è più larga, sotto le ascelle", talk: ["dorsali più larghi", "dorsali più stretti"] },
+    waist: { name: "Vita", where: "nel punto più stretto", talk: ["vita più larga", "vita più stretta"] },
+    hips: { name: "Fianchi", where: "il punto più largo di fianchi e glutei", talk: ["fianchi più larghi", "fianchi più stretti"] },
+    thigh: { name: "Coscia", where: "una coscia nel punto più largo, subito sotto i glutei", talk: ["cosce più piene", "cosce più sottili"], full: true },
+  },
+};
+// Rapporti fra due misure, mostrati quando ci sono tutte e due
+const RATIOS = {
+  front: [
+    { id: "vtaper", a: "shoulders", b: "waist", name: "V-taper", talk: ["la V si apre", "la V si chiude"] },
+    { id: "whr", a: "waist", b: "hips", name: "Vita / fianchi", talk: ["la vita si allarga rispetto ai fianchi", "la vita si stringe rispetto ai fianchi"] },
+    { id: "shr", a: "shoulders", b: "hips", name: "Spalle / fianchi", talk: ["le spalle si allargano rispetto ai fianchi", "i fianchi si allargano rispetto alle spalle"] },
+  ],
+  side: [
+    { id: "cw", a: "chest", b: "waist", name: "Petto / pancia", talk: ["il petto sporge più della pancia", "la pancia sporge più del petto"] },
+    { id: "gw", a: "glutes", b: "waist", name: "Glutei / pancia", talk: ["i glutei sporgono più della pancia", "la pancia sporge più dei glutei"] },
+  ],
+  back: [
+    { id: "vtaper", a: "back", b: "waist", name: "V-taper", talk: ["la V si apre", "la V si chiude"] },
+    { id: "whr", a: "waist", b: "hips", name: "Vita / fianchi", talk: ["la vita si allarga rispetto ai fianchi", "la vita si stringe rispetto ai fianchi"] },
+  ],
+};
+const PRESETS = {
+  male: { front: ["shoulders", "waist"], side: ["chest", "waist"], back: ["back", "waist"], full: { front: ["thigh"], back: [] } },
+  female: { front: ["shoulders", "waist", "hips"], side: ["waist", "glutes"], back: ["waist", "hips"], full: { front: ["thigh"], back: ["thigh"] } },
+  custom: { front: ["shoulders", "waist", "hips"], side: ["chest", "waist"], back: ["back", "waist"], full: { front: ["thigh"], back: [] } },
+};
+const WHO = { male: "Uomo", female: "Donna", custom: "Scelgo io" };
+const FRAMINGS = {
+  torso: { label: "Busto", sub: "Dalla testa ai fianchi" },
+  full: { label: "Figura intera", sub: "Dalla testa ai piedi" },
+};
+const SCHEMES = {
+  nipples: { label: "Capezzoli", sub: "I più precisi, se si vedono" },
+  neckNavel: { label: "Collo e ombelico", sub: "Vanno bene anche con reggiseno o top" },
+};
+
+function presetMeasures(who, framing) {
+  const base = PRESETS[who] || PRESETS.male;
+  return Object.fromEntries(POSE_KEYS_ALL.map((k) => [k, [...base[k], ...(framing === "full" ? base.full[k] || [] : [])]]));
+}
+const POSE_KEYS_ALL = ["front", "side", "back"];
+function defaultSettings(who = "male", framing = "torso") {
+  return { who, framing, scheme: who === "female" ? "neckNavel" : "nipples", measures: presetMeasures(who, framing), definition: true };
+}
+function loadSettings() {
+  try {
+    const s = JSON.parse(localStorage.getItem(SETTINGS_KEY));
+    if (s && FRAMINGS[s.framing] && SCHEMES[s.scheme] && s.measures) return { ...defaultSettings(), ...s };
+  } catch { /* niente salvato */ }
+  return null;
+}
+let settings = loadSettings() || defaultSettings();
+const settingsSaved = !!loadSettings();
+const gendered = (v) => typeof v === "string" ? v : v[settings.who] || v.custom || v.male;
+
+// La tela del confronto. U = distanza fra la base del collo e l'ombelico, in pixel della tela
+const LAYOUTS = { torso: { CH: 800, U: 295, neck: 160 }, full: { CH: 960, U: 190, neck: 175 } };
+let CW = 600, CH = 800;
+let POSES = {};
+let POSE_KEYS = POSE_KEYS_ALL;
+// Punto del corpo: x in unità dal centro, y in unità dalla base del collo
+const body = (ux, uy) => { const L = LAYOUTS[settings.framing]; return [300 + ux * L.U, L.neck + uy * L.U]; };
+const NIP_Y = 0.475, NIP_X = 0.237; // capezzoli rispetto al collo, in unità
+
+function buildPoses() {
+  CH = LAYOUTS[settings.framing].CH;
+  const measuresOf = (k) => (settings.measures[k] || []).filter((id) => MEASURES[k][id] && (!MEASURES[k][id].full || settings.framing === "full"));
+  const ratiosOf = (k) => { const ms = measuresOf(k); return RATIOS[k].filter((r) => ms.includes(r.a) && ms.includes(r.b)); };
+  const front = settings.scheme === "nipples"
+    ? {
+      align: [
+        { name: "Capezzolo a sinistra", hint: "Clicca il <b>capezzolo a sinistra</b> nella foto." },
+        { name: "Capezzolo a destra", hint: "Clicca il <b>capezzolo a destra</b> nella foto." },
+        { name: "Ombelico", hint: "Clicca l'<b>ombelico</b>, o un neo o un tatuaggio: sempre lo stesso.", optional: true },
+      ],
+      targets: [body(-NIP_X, NIP_Y), body(NIP_X, NIP_Y)],
+      pair: true, // i primi due punti sono una coppia sinistra/destra: si ordinano per posizione
+    }
+    : {
+      align: [
+        { name: "Base del collo", hint: "Clicca la <b>fossetta alla base del collo</b>, fra le clavicole." },
+        { name: "Ombelico", hint: "Clicca l'<b>ombelico</b>. Se è coperto, il centro dell'elastico: sempre lo stesso punto." },
+      ],
+      targets: [body(0, 0), body(0, 1)],
+    };
+  POSES = {
+    front: { label: "Di fronte", ...front, lr: true },
+    side: {
+      label: "Di lato",
+      align: [
+        settings.who === "male" ? { name: "Capezzolo", hint: "Clicca il <b>capezzolo</b>." }
+          : { name: "Punto più sporgente del petto", hint: "Clicca il <b>punto più sporgente del petto</b>." },
+        { name: "Ombelico", hint: "Clicca l'<b>ombelico</b>, o il centro dell'elastico se è coperto." },
+      ],
+      targets: [body(0, NIP_Y), body(0, 1)],
+    },
+    back: {
+      label: "Di schiena",
+      align: [
+        { name: "Base del collo", hint: "Clicca la <b>vertebra che sporge</b> alla base del collo." },
+        { name: "Centro schiena in basso", hint: "Clicca il <b>centro della schiena</b> all'altezza della vita." },
+      ],
+      targets: [body(0, 0.034), body(0, 0.95)],
+      lr: true,
+    },
+  };
+  for (const k of POSE_KEYS_ALL) { POSES[k].measures = measuresOf(k); POSES[k].ratios = ratiosOf(k); }
+}
+buildPoses();
+// Sul telefono le foto si tengono più piccole: la memoria per le immagini è poca
+const MOBILE = matchMedia("(pointer: coarse)").matches && Math.min(screen.width, screen.height) < 820;
+const MAX_SIDE = MOBILE ? 1280 : 1600;
+
+const state = { photos: [], selected: null, mode: "align", view: "prepare", cmode: "wipe", wipe: 50, fade: 50, comparePose: "front", thirds: {}, refKeys: new Set(), guidePose: "front" };
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmtDate = (d) => d ? d.split("-").reverse().join("/") : "";
+const labelOf = (p) => p.date ? fmtDate(p.date) : p.name;
+const dist = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]);
+
+let toastTimer = 0;
+function toast(msg) {
+  const t = $("#toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 3200);
+}
+
+// ------------------------------------------------------------------ caricamento
+
+function dateFromName(name) {
+  const m = name.match(/(20\d{2})[-_.]?(\d{2})[-_.]?(\d{2})/);
+  if (!m) return "";
+  const [, y, mo, d] = m;
+  return +mo >= 1 && +mo <= 12 && +d >= 1 && +d <= 31 ? `${y}-${mo}-${d}` : "";
+}
+
+function loadImage(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("formato")); };
+    img.src = url;
+  });
+}
+
+// Librerie scaricate al primo uso, a versione fissa e controllate con l'impronta SHA-256:
+// se il file sul CDN cambia, non parte. Le foto non vanno da nessuna parte.
+// HEIC: Safari le apre da solo, Chrome e Firefox usano libheif (heic-to).
+// Posa: MediaPipe Pose Landmarker (spalle, anche, mani) per allineare e scegliere le foto.
+const MP = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3";
+const LIBS = {
+  heic: ["https://cdn.jsdelivr.net/npm/heic-to@1.6.7/dist/heic-to.js", "iRqAh9dcPKCTQnpkPGd7EPx/nE+RgVg9y5ibyAXnX24=", "text/javascript"],
+  vision: [`${MP}/vision_bundle.mjs`, "+wwCwpb0TODMMkuha9ZG2Hc+tKeEfbQBnMTQQw23qbU=", "text/javascript"],
+  visionLoader: [`${MP}/wasm/vision_wasm_internal.js`, "KqX9P909ggjNdYffC7GftpJcTqFqdt0CWu3B9k1qYwk=", "text/javascript"],
+  visionWasm: [`${MP}/wasm/vision_wasm_internal.wasm`, "IlvAbA9Rqc8x/qDp4LAkPp4B+17zMswaf6Zlbb39qr8=", "application/wasm"],
+  poseModel: ["https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task", "UTSjqtJ6WLk9oAiNQx82baNitE48z740YrOCeoOQEbE=", "application/octet-stream"],
+};
+async function fetchChecked(name) {
+  const [url, hash] = LIBS[name];
+  const res = await fetch(url, { credentials: "omit" });
+  if (!res.ok) throw new Error("rete");
+  const data = await res.arrayBuffer();
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", data));
+  if (btoa(String.fromCharCode(...digest)) !== hash) throw new Error("impronta");
+  return data;
+}
+const blobUrl = async (name) => URL.createObjectURL(new Blob([await fetchChecked(name)], { type: LIBS[name][2] }));
+
+let heicLib = null;
+function loadHeicLib() {
+  heicLib ??= blobUrl("heic").then((u) => import(u)).catch((e) => { heicLib = null; throw e; });
+  return heicLib;
+}
+
+// Data di scatto: dal nome del file, poi dall'EXIF (JPG e HEIC lo tengono all'inizio), poi dalla data del file.
+// "stamp" è data e ora di scatto: serve a ritrovare la stessa foto su un altro dispositivo
+async function photoMeta(file) {
+  const head = new TextDecoder("latin1").decode(await file.slice(0, 256 * 1024).arrayBuffer());
+  const m = head.match(/(20\d\d):(\d\d):(\d\d) (\d\d):(\d\d):(\d\d)/);
+  const stamp = m ? m[0] : "";
+  const fromName = dateFromName(file.name);
+  if (fromName) return { date: fromName, stamp };
+  if (m) return { date: `${m[1]}-${m[2]}-${m[3]}`, stamp };
+  if (!file.lastModified) return { date: "", stamp };
+  const d = new Date(file.lastModified);
+  return { date: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`, stamp };
+}
+
+async function looksHeic(file) {
+  if (/\.(heic|heif)$/i.test(file.name) || /image\/hei[cf]/.test(file.type)) return true;
+  const head = new TextDecoder().decode(await file.slice(4, 12).arrayBuffer());
+  return /^ftyp(heic|heix|heim|heis|hevc|hevx|mif1|msf1)$/.test(head);
+}
+
+async function decodeFile(file) {
+  try {
+    return await loadImage(file);
+  } catch (e) {
+    if (!(await looksHeic(file))) throw e;
+    let lib;
+    try { lib = await loadHeicLib(); } catch { throw new Error("heic-lib"); }
+    return lib.heicTo({ blob: file, type: "bitmap" });
+  }
+}
+
+function downscale(img) {
+  const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+  const s = Math.min(1, MAX_SIDE / Math.max(w, h));
+  const c = document.createElement("canvas");
+  c.width = Math.round(w * s);
+  c.height = Math.round(h * s);
+  c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+  return c;
+}
+
+// Tratto più lungo di righe (o colonne) piene, ignorando buchi di pochi pixel
+function longestRun(flags, maxGap = 4) {
+  let best = null, start = -1, last = -1;
+  const close = () => { if (start >= 0 && (!best || last + 1 - start > best[1] - best[0])) best = [start, last + 1]; };
+  flags.forEach((busy, i) => {
+    if (!busy) return;
+    if (start < 0 || i - last > maxGap + 1) { close(); start = i; }
+    last = i;
+  });
+  close();
+  return best || [0, flags.length];
+}
+
+// Toglie le bande degli screenshot: righe tutte bianche o tutte nere (un muro uniforme resta)
+function trim(c) {
+  const w = c.width, h = c.height;
+  const d = c.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, w, h).data;
+  const g = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) g[i] = (d[i * 4] + d[i * 4 + 1] + d[i * 4 + 2]) / 3;
+  const filled = (sum, sum2, n) => {
+    const mean = sum / n, std = Math.sqrt(Math.max(0, sum2 / n - mean * mean));
+    return std > 6 || (mean > 25 && mean < 230);
+  };
+  const rows = [];
+  for (let y = 0; y < h; y++) {
+    let s = 0, s2 = 0;
+    for (let x = 0; x < w; x++) { const v = g[y * w + x]; s += v; s2 += v * v; }
+    rows.push(filled(s, s2, w));
+  }
+  const [y1, y2] = longestRun(rows);
+  const cols = [];
+  for (let x = 0; x < w; x++) {
+    let s = 0, s2 = 0;
+    for (let y = y1; y < y2; y++) { const v = g[y * w + x]; s += v; s2 += v * v; }
+    cols.push(filled(s, s2, y2 - y1));
+  }
+  const [x1, x2] = longestRun(cols);
+  if (x2 - x1 < w * 0.3 || y2 - y1 < h * 0.2) return c;
+  if (x1 === 0 && y1 === 0 && x2 === w && y2 === h) return c;
+  const out = document.createElement("canvas");
+  out.width = x2 - x1;
+  out.height = y2 - y1;
+  out.getContext("2d").drawImage(c, x1, y1, out.width, out.height, 0, 0, out.width, out.height);
+  return out;
+}
+
+// Vecchio formato: 4 punti (prima misura, seconda misura) in ordine fisso per posa
+function migrateMeasure(saved) {
+  const m = saved?.measure;
+  if (!Array.isArray(m) || !m.length) return {};
+  const ids = { front: ["shoulders", "waist"], side: ["chest", "waist"], back: ["back", "waist"] }[saved.pose] || ["shoulders", "waist"];
+  const out = {};
+  if (m.length >= 1) out[ids[0]] = m.slice(0, 2);
+  if (m.length >= 3) out[ids[1]] = m.slice(2, 4);
+  return out;
+}
+
+const canvasBlob = (c, type = "image/jpeg", q = 0.92) => new Promise((resolve, reject) => c.toBlob((b) => b ? resolve(b) : reject(new Error("blob")), type, q));
+const validDate = (d) => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d);
+// Stessa foto salvata con un altro nome o un'altra dimensione del file (altro dispositivo): si ritrova con data e ora di scatto
+function findByStamp(stamp) {
+  if (!stamp) return null;
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (!k.startsWith("progressi:") || k === SETTINGS_KEY) continue;
+    try { const v = JSON.parse(localStorage.getItem(k)); if (v?.stamp === stamp) return v; } catch { /* rovinato */ }
+  }
+  return null;
+}
+
+// legacyK: di quanto riscalare punti salvati senza misura della foto (versioni vecchie, sempre a 1600 px)
+async function makePhoto(key, name, baseBlob, date, stamp = "", legacyK = 1) {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(key)); } catch { /* niente salvato */ }
+  saved ??= findByStamp(stamp);
+  const p = {
+    key, name, baseBlob, stamp: stamp || saved?.stamp || "", proc: null, w: 0, h: 0, thumb: "", M: null,
+    date: validDate(saved?.date) ? saved.date : date,
+    pose: POSES[saved?.pose] ? saved.pose : "front",
+    flip: saved?.flip ?? false, bright: saved?.bright ?? 0, contrast: saved?.contrast ?? 0,
+    align: saved?.align ?? [], meas: saved?.meas ?? migrateMeasure(saved), noThird: saved?.noThird ?? false,
+    use: saved?.use ?? null, auto: saved?.auto ?? null, lm: saved?.lm ?? null, tweak: saved?.tweak ?? null,
+    ref: state.refKeys.has(key),
+  };
+  // Punti di fronte messi con l'altro schema (capezzoli / collo e ombelico): da rifare
+  if (p.pose === "front" && p.align.length && (saved?.scheme ?? "nipples") !== settings.scheme) {
+    p.align = []; p.noThird = false; p.auto = null; p.tweak = null;
+  }
+  await renderProc(p);
+  // I punti sono in pixel della foto ridotta: se qui è ridotta a un'altra misura (telefono), si riscalano
+  const long = Math.max(p.w, p.h);
+  const k = saved?.dims ? (Math.abs(Math.max(...saved.dims) - long) > 1 ? long / Math.max(...saved.dims) : 1) : saved ? legacyK : 1;
+  if (k !== 1) {
+    const sc = (q) => [q[0] * k, q[1] * k, ...q.slice(2)];
+    p.align = p.align.map(sc);
+    mapMeas(p, sc);
+    if (p.lm) p.lm = p.lm.map(sc);
+  }
+  if (saved && (!saved.dims || k !== 1 || !saved.stamp || !localStorage.getItem(key))) save(p);
+  return p;
+}
+
+// Foto aperta → copia ridotta e compressa (l'originale non si tiene in memoria)
+async function prepareBase(img, doTrim) {
+  let c = downscale(img);
+  if (doTrim) c = trim(c);
+  const blob = await canvasBlob(c);
+  c.width = c.height = 0;
+  return blob;
+}
+
+async function addFiles(files) {
+  const failed = [];
+  let added = 0, heicOffline = false;
+  if (files.some((f) => /\.(heic|heif)$/i.test(f.name)) && !heicLib) toast("Apro le HEIC…");
+  for (const file of files) {
+    if (!file.type.startsWith("image/") && !/\.(heic|heif)$/i.test(file.name)) continue;
+    const key = `progressi:${file.name}:${file.size}`;
+    if (state.photos.some((p) => p.key === key)) continue;
+    try {
+      const meta = await photoMeta(file);
+      if (meta.stamp && state.photos.some((p) => p.stamp === meta.stamp)) continue;
+      const img = await decodeFile(file);
+      const L = Math.max(img.naturalWidth || img.width, img.naturalHeight || img.height);
+      const blob = await prepareBase(img, true);
+      img.close?.();
+      const p = await makePhoto(key, file.name, blob, meta.date, meta.stamp, Math.min(1, MAX_SIDE / L) / Math.min(1, 1600 / L));
+      state.photos.push(p);
+      added++;
+      if (!state.selected) state.selected = p;
+    } catch (e) {
+      if (e.message === "heic-lib") heicOffline = true;
+      failed.push(file.name);
+    }
+  }
+  if (heicOffline) toast("Per aprire le HEIC qui serve internet (si scarica il convertitore, le foto restano sul dispositivo). Oppure apri la pagina con Safari.");
+  else if (failed.length) toast(`Non riesco ad aprire ${failed.join(", ")}.`);
+  else if (added) toast(added === 1 ? "1 foto aggiunta" : `${added} foto aggiunte`);
+  if (added) navigator.storage?.persist?.().catch(() => {});
+  refresh();
+  processQueue();
+}
+
+// ------------------------------------------------------------------ riferimenti (IndexedDB, solo in questo browser)
+
+const MAX_REFS = 2;
+function idb(mode, fn) {
+  return new Promise((resolve, reject) => {
+    const open = indexedDB.open("progressi", 1);
+    open.onupgradeneeded = () => open.result.createObjectStore("refs", { keyPath: "key" });
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const tx = open.result.transaction("refs", mode);
+      const req = fn(tx.objectStore("refs"));
+      tx.oncomplete = () => { open.result.close(); resolve(req?.result); };
+      tx.onerror = () => { open.result.close(); reject(tx.error); };
+    };
+  });
+}
+
+async function setRef(p, on) {
+  try {
+    if (on) {
+      const blob = p.baseBlob;
+      const before = anchorsFor(p.pose);
+      await idb("readwrite", (s) => s.put({ key: p.key, name: p.name, date: p.date, stamp: p.stamp, blob, savedAt: Date.now() }));
+      state.refKeys.add(p.key);
+      p.ref = true;
+      // Con un punto di partenza nuovo si rifanno le foto allineate in automatico ma incerte
+      if (!before.includes(p)) state.photos.filter((q) => q.pose === p.pose && q.auto && !q.auto.sure).forEach((q) => { q.align = []; q.auto = null; q.autoSkip = false; });
+    } else {
+      await idb("readwrite", (s) => s.delete(p.key));
+      state.refKeys.delete(p.key);
+    }
+    p.ref = on;
+    toast(on ? "Salvata come riferimento, solo in questo browser" : "Tolta dai riferimenti");
+  } catch {
+    toast("Non riesco a salvare nel browser");
+  }
+  refresh();
+  if (on) processQueue();
+}
+
+async function loadRefs() {
+  let refs = [];
+  try { refs = (await idb("readonly", (s) => s.getAll())) || []; } catch { return; }
+  for (const r of refs) {
+    state.refKeys.add(r.key);
+    const open = state.photos.find((p) => p.key === r.key || (r.stamp && p.stamp === r.stamp));
+    if (open) { open.ref = true; state.refKeys.add(open.key); continue; }
+    try {
+      const img = await loadImage(r.blob);
+      const B = Math.max(img.naturalWidth, img.naturalHeight);
+      const blob = B > MAX_SIDE ? await prepareBase(img, false) : r.blob;
+      const p = await makePhoto(r.key, r.name, blob, validDate(r.date) ? r.date : "", r.stamp || "", Math.min(B, MAX_SIDE) / B);
+      state.photos.push(p);
+      if (!state.selected) state.selected = p;
+    } catch { /* riferimento rovinato: si ignora */ }
+  }
+}
+
+function save(p) {
+  const { date, pose, flip, bright, contrast, align, meas, noThird, use, auto, lm, tweak, stamp } = p;
+  const scheme = settings.scheme, dims = [p.w, p.h];
+  try { localStorage.setItem(p.key, JSON.stringify({ date, pose, flip, bright, contrast, align, meas, noThird, use, auto, lm, tweak, scheme, dims, stamp })); } catch { /* spazio pieno */ }
+}
+
+// Foto con specchio, luce e contrasto applicati. I punti sono in queste coordinate.
+// Si tiene come ImageBitmap (non come canvas): sul telefono la memoria dei canvas finisce presto
+const scratch = document.createElement("canvas");
+async function renderProc(p) {
+  const img = await createImageBitmap(p.baseBlob);
+  const proc = scratch;
+  proc.width = p.w = img.width;
+  proc.height = p.h = img.height;
+  const ctx = proc.getContext("2d", { willReadFrequently: true });
+  ctx.save();
+  if (p.flip) { ctx.translate(proc.width, 0); ctx.scale(-1, 1); }
+  ctx.drawImage(img, 0, 0);
+  ctx.restore();
+  img.close();
+  if (p.bright || p.contrast) {
+    const im = ctx.getImageData(0, 0, proc.width, proc.height);
+    const d = im.data, k = (100 + p.contrast) / 100, off = p.bright * 2.55;
+    for (let i = 0; i < d.length; i += 4) {
+      d[i] = (d[i] - 128) * k + 128 + off;
+      d[i + 1] = (d[i + 1] - 128) * k + 128 + off;
+      d[i + 2] = (d[i + 2] - 128) * k + 128 + off;
+    }
+    ctx.putImageData(im, 0, 0);
+  }
+  const t = document.createElement("canvas");
+  t.width = 92;
+  t.height = 124;
+  const tctx = t.getContext("2d");
+  const s = Math.max(t.width / proc.width, t.height / proc.height);
+  tctx.drawImage(proc, (t.width - proc.width * s) / 2, (t.height - proc.height * s) / 2, proc.width * s, proc.height * s);
+  p.thumb = t.toDataURL("image/jpeg", 0.75);
+  const bmp = await createImageBitmap(proc);
+  p.proc?.close?.();
+  p.proc = bmp;
+}
+
+const byDate = (a, b) => (a.date || "9999").localeCompare(b.date || "9999") || a.name.localeCompare(b.name);
+const sorted = () => POSE_KEYS.flatMap((k) => state.photos.filter((p) => p.pose === k).sort(byDate));
+
+// ------------------------------------------------------------------ allineamento
+
+// Rotazione + scala + traslazione (senza specchio) che porta src su dst, ai minimi quadrati
+function fitSim(src, dst) {
+  const n = src.length;
+  const mean = (pts) => [pts.reduce((s, q) => s + q[0], 0) / n, pts.reduce((s, q) => s + q[1], 0) / n];
+  const ps = mean(src), qs = mean(dst);
+  let na = 0, nb = 0, den = 0;
+  for (let i = 0; i < n; i++) {
+    const px = src[i][0] - ps[0], py = src[i][1] - ps[1];
+    const qx = dst[i][0] - qs[0], qy = dst[i][1] - qs[1];
+    na += px * qx + py * qy;
+    nb += px * qy - py * qx;
+    den += px * px + py * py;
+  }
+  const a = na / den, b = nb / den;
+  return { a, b, tx: qs[0] - (a * ps[0] - b * ps[1]), ty: qs[1] - (b * ps[0] + a * ps[1]) };
+}
+const apply = (M, [x, y]) => [M.a * x - M.b * y + M.tx, M.b * x + M.a * y + M.ty];
+
+const alignSteps = (p) => POSES[p.pose].align.filter((s, i) => !(s.optional && p.noThird && i === 2));
+const firstTwo = (p) => {
+  const [a, b] = p.align;
+  return POSES[p.pose].pair && a[0] > b[0] ? [b, a] : [a, b];
+};
+
+// Per ogni posa la prima foto allineata fa da riferimento: il terzo punto finisce dove sta nella sua
+// Ritocco a mano dopo l'allineamento: dimensione, rotazione e spostamento intorno al centro dei punti
+const NO_TWEAK = { s: 0, r: 0, x: 0, y: 0 }; // s in %, r in gradi, x/y in px della tela del confronto
+const hasTweak = (p) => !!p.tweak && Object.values(p.tweak).some((v) => v);
+function withTweak(M, p) {
+  if (!hasTweak(p)) return M;
+  const T = POSES[p.pose].targets, c = [T.reduce((s, q) => s + q[0], 0) / T.length, T.reduce((s, q) => s + q[1], 0) / T.length];
+  const k = 1 + p.tweak.s / 100, t = p.tweak.r * Math.PI / 180, ca = k * Math.cos(t), sa = k * Math.sin(t);
+  const tx = M.tx - c[0], ty = M.ty - c[1];
+  return {
+    a: ca * M.a - sa * M.b, b: sa * M.a + ca * M.b,
+    tx: c[0] + ca * tx - sa * ty + p.tweak.x, ty: c[1] + sa * tx + ca * ty + p.tweak.y,
+  };
+}
+
+function computeTransforms() {
+  state.photos.forEach((p) => { p.M = null; });
+  state.thirds = {};
+  for (const k of POSE_KEYS) {
+    const ready = state.photos.filter((p) => p.pose === k && p.align.length >= 2 && dist(p.align[0], p.align[1]) > 5).sort(byDate);
+    if (!ready.length) continue;
+    const T = POSES[k].targets;
+    const ref = ready[0];
+    const third = ref.align[2] ? apply(fitSim(firstTwo(ref), T), ref.align[2]) : null;
+    state.thirds[k] = third;
+    for (const p of ready) {
+      p.M = withTweak(third && p.align[2] ? fitSim([...firstTwo(p), p.align[2]], [...T, third]) : fitSim(firstTwo(p), T), p);
+    }
+  }
+}
+
+// Larghezze (nella tela del confronto) e rapporti delle misure fatte
+function measures(p) {
+  if (!p.M) return null;
+  const values = {}, ratios = {};
+  for (const id of POSES[p.pose].measures) {
+    const m = p.meas[id];
+    if (m?.length === 2) values[id] = dist(apply(p.M, m[0]), apply(p.M, m[1]));
+  }
+  for (const r of POSES[p.pose].ratios) if (values[r.a] && values[r.b]) ratios[r.id] = values[r.a] / values[r.b];
+  return Object.keys(values).length ? { values, ratios } : null;
+}
+// I clic delle misure in ordine: due per misura
+function measureSteps(p) {
+  const lr = POSES[p.pose].lr;
+  return POSES[p.pose].measures.flatMap((id) => {
+    const M = MEASURES[p.pose][id];
+    return [0, 1].map((i) => ({
+      id, i, name: `${M.name} · ${lr ? (i ? "bordo destro" : "bordo sinistro") : (i ? "dietro" : "davanti")}`,
+      hint: `<b>${M.name}</b>, ${lr ? (i ? "bordo destro" : "bordo sinistro") : (i ? "dietro" : "davanti")}: ${gendered(M.where)}.`,
+    }));
+  });
+}
+const stepDone = (p, s) => !!p.meas[s.id]?.[s.i];
+const measureComplete = (p) => POSES[p.pose].measures.length > 0 && POSES[p.pose].measures.every((id) => p.meas[id]?.length === 2);
+const mapMeas = (p, f) => { p.meas = Object.fromEntries(Object.entries(p.meas).map(([id, pts]) => [id, pts.map(f)])); };
+
+// ------------------------------------------------------------------ riconoscimento della posa (MediaPipe)
+
+let poser = null;
+function loadPoser() {
+  poser ??= (async () => {
+    const [mod, wasmLoaderPath, wasmBinaryPath, model] = await Promise.all([
+      blobUrl("vision").then((u) => import(u)), blobUrl("visionLoader"), blobUrl("visionWasm"), fetchChecked("poseModel"),
+    ]);
+    return mod.PoseLandmarker.createFromOptions({ wasmLoaderPath, wasmBinaryPath }, {
+      baseOptions: { modelAssetBuffer: new Uint8Array(model), delegate: "CPU" }, runningMode: "IMAGE", numPoses: 1,
+    });
+  })().catch((e) => { poser = null; throw e; });
+  return poser;
+}
+
+// Punti del corpo (coordinate della foto, con lo specchio già applicato): [x, y, visibilità]
+const LM = { nose: 0, shoulders: [11, 12], hips: [23, 24], hands: [[15, 17, 19, 21], [16, 18, 20, 22]] };
+async function detectPose(p) {
+  const res = (await loadPoser()).detect(p.proc);
+  const lm = res.landmarks?.[0];
+  p.lm = lm ? lm.map((q) => [Math.round(q.x * p.proc.width), Math.round(q.y * p.proc.height), Math.round((q.visibility ?? 1) * 100) / 100]) : [];
+  save(p);
+}
+const seen = (p, i) => p.lm?.[i] && p.lm[i][2] > 0.5;
+const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+function lmPair(p, name) {
+  const [i, j] = LM[name];
+  return seen(p, i) && seen(p, j) ? [p.lm[i], p.lm[j]].map((q) => [q[0], q[1]]).sort((a, b) => a[0] - b[0]) : null;
+}
+function hands(p) {
+  return LM.hands.map((ids) => ids.filter((i) => seen(p, i)).map((i) => p.lm[i])).filter((pts) => pts.length >= 2)
+    .map((pts) => [pts.reduce((s, q) => s + q[0], 0) / pts.length, pts.reduce((s, q) => s + q[1], 0) / pts.length]);
+}
+
+// Dov'è la mano che non tiene il telefono: "belly", "chest" o null
+function handSpot(p) {
+  const sh = lmPair(p, "shoulders");
+  if (!sh) return null;
+  const sw = dist(sh[0], sh[1]), sy = (sh[0][1] + sh[1][1]) / 2;
+  const hp = lmPair(p, "hips");
+  const hy = hp ? (hp[0][1] + hp[1][1]) / 2 : sy + sw * 1.6;
+  const torso = hy - sy;
+  for (const [x, y] of hands(p)) {
+    if (x < sh[0][0] - sw * 0.1 || x > sh[1][0] + sw * 0.1) continue;
+    if (y > sy + torso * 0.45 && y < hy + torso * 0.15) return "belly";
+    if (y > sy + torso * 0.12 && y <= sy + torso * 0.45) return "chest";
+  }
+  return null;
+}
+
+// ---- allineamento automatico: posa per avvicinarsi, poi il petto della foto di partenza cercato nella nuova
+
+const WORK = 64; // distanza fra i capezzoli nella copia di lavoro
+function grayCopy(canvas, k) {
+  const w = Math.max(1, Math.round(canvas.width * k)), h = Math.max(1, Math.round(canvas.height * k));
+  const c = document.createElement("canvas");
+  c.width = w;
+  c.height = h;
+  const ctx = c.getContext("2d", { willReadFrequently: true });
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(canvas, 0, 0, w, h);
+  const d = ctx.getImageData(0, 0, w, h).data, g = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) g[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
+  // Solo i dettagli (capezzoli, peli, bordi dei pettorali): via i cambi di luce larghi
+  const low = boxBlur(boxBlur(g, w, h, 16), w, h, 16);
+  for (let i = 0; i < w * h; i++) g[i] -= low[i];
+  return { g, w, h };
+}
+function sampleAt(im, x, y) {
+  if (x < 0 || y < 0 || x > im.w - 2 || y > im.h - 2) return NaN;
+  const x0 = x | 0, y0 = y | 0, fx = x - x0, fy = y - y0, i = y0 * im.w + x0, g = im.g;
+  return (g[i] * (1 - fx) + g[i + 1] * fx) * (1 - fy) + (g[i + im.w] * (1 - fx) + g[i + im.w + 1] * fx) * fy;
+}
+function offsets(a0, a1, b0, b1, step) {
+  const out = [];
+  for (let b = b0; b <= b1 + 1e-9; b += step) for (let a = a0; a <= a1 + 1e-9; a += step) out.push(a, b);
+  return Float32Array.from(out);
+}
+// Campiona im nei punti c + s·(a·u + b·v), con v = u ruotato di 90° (verso il basso)
+function samples(im, c, u, s, offs) {
+  const n = offs.length / 2, out = new Float32Array(n);
+  for (let k = 0; k < n; k++) {
+    const a = offs[2 * k], b = offs[2 * k + 1];
+    out[k] = sampleAt(im, c[0] + s * (a * u[0] - b * u[1]), c[1] + s * (a * u[1] + b * u[0]));
+  }
+  return out;
+}
+function nccScore(T, V) {
+  let n = 0, st = 0, sv = 0, stt = 0, svv = 0, stv = 0;
+  for (let k = 0; k < T.length; k++) {
+    const v = V[k], t = T[k];
+    if (Number.isNaN(v) || Number.isNaN(t)) continue;
+    n++; st += t; sv += v; stt += t * t; svv += v * v; stv += t * v;
+  }
+  if (n < T.length * 0.8) return -1;
+  const cov = stv - st * sv / n, vt = stt - st * st / n, vv = svv - sv * sv / n;
+  return vt > 0 && vv > 0 ? cov / Math.sqrt(vt * vv) : -1;
+}
+const rot = ([x, y], t) => [x * Math.cos(t) - y * Math.sin(t), x * Math.sin(t) + y * Math.cos(t)];
+
+// Cerca il miglior centro/scala/rotazione intorno alla stima
+function search(T, offs, im, c0, u0, s0, { scales, rots, radius, step }) {
+  let best = { score: -2 };
+  for (const e of scales) for (const r of rots) {
+    const u = rot(u0, r), s = s0 * e;
+    for (let dy = -radius; dy <= radius; dy += step) for (let dx = -radius; dx <= radius; dx += step) {
+      const c = [c0[0] + dx, c0[1] + dy];
+      const score = nccScore(T, samples(im, c, u, s, offs));
+      if (score > best.score) best = { score, c, u, s };
+    }
+  }
+  return best;
+}
+const range = (from, to, step) => { const out = []; for (let v = from; v <= to + 1e-9; v += step) out.push(+v.toFixed(4)); return out; };
+
+const grayCache = new Map();
+function workCopy(p, k) {
+  const sig = `${p.key}:${p.flip}:${p.bright}:${p.contrast}:${k.toFixed(4)}`;
+  if (!grayCache.has(sig)) {
+    if (grayCache.size > 16) grayCache.clear();
+    grayCache.set(sig, grayCopy(p.proc, k));
+  }
+  return grayCache.get(sig);
+}
+
+// ---- capezzoli: macchie piccole più rosse e più scure della pelle intorno, in tutte le direzioni
+function colorCopy(canvas, k) {
+  const w = Math.max(1, Math.round(canvas.width * k)), h = Math.max(1, Math.round(canvas.height * k));
+  const c = document.createElement("canvas");
+  c.width = w; c.height = h;
+  const ctx = c.getContext("2d", { willReadFrequently: true });
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(canvas, 0, 0, w, h);
+  const d = ctx.getImageData(0, 0, w, h).data, red = new Float32Array(w * h), lum = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) { red[i] = d[i * 4] - d[i * 4 + 1]; lum[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2]; }
+  const R = boxBlur(boxBlur(red, w, h, 1), w, h, 1), L = boxBlur(boxBlur(lum, w, h, 1), w, h, 1);
+  const Rb = boxBlur(boxBlur(red, w, h, 6), w, h, 6), Lb = boxBlur(boxBlur(lum, w, h, 6), w, h, 6), score = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) score[i] = Math.max(0, R[i] - Rb[i]) + 0.5 * Math.max(0, Lb[i] - L[i]);
+  return { w, h, score, R, L }
+}
+
+// Contrasto minimo fra il centro e un anello intorno (8 direzioni): sul bordo del corpo un lato è sfondo e fallisce
+function isoScore(m, x, y, r) {
+  const at = (a, xx, yy) => a[Math.round(yy) * m.w + Math.round(xx)];
+  const cR = at(m.R, x, y), cL = at(m.L, x, y);
+  let min = Infinity;
+  for (let k = 0; k < 8; k++) {
+    const t = k * Math.PI / 4, xx = x + r * Math.cos(t), yy = y + r * Math.sin(t);
+    if (xx < 0 || yy < 0 || xx >= m.w || yy >= m.h) return -1;
+    min = Math.min(min, (cR - at(m.R, xx, yy)) + 0.5 * (at(m.L, xx, yy) - cL));
+  }
+  return min;
+}
+function blobCandidates(m, centers, radius) {
+  const out = [];
+  for (const [cx, cy] of centers) {
+    const x0 = Math.max(8, Math.floor(cx - radius)), x1 = Math.min(m.w - 9, Math.ceil(cx + radius));
+    const y0 = Math.max(8, Math.floor(cy - radius)), y1 = Math.min(m.h - 9, Math.ceil(cy + radius));
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+      if (Math.hypot(x - cx, y - cy) > radius) continue;
+      const v = m.score[y * m.w + x];
+      if (v <= 0) continue;
+      let peak = true;
+      for (let dy = -3; dy <= 3 && peak; dy++) for (let dx = -3; dx <= 3; dx++) if ((dx || dy) && m.score[(y + dy) * m.w + x + dx] > v) { peak = false; break; }
+      if (!peak || out.some((q) => Math.hypot(q[0] - x, q[1] - y) < 3)) continue;
+      const iso = Math.min(isoScore(m, x, y, 5), isoScore(m, x, y, 7));
+      if (iso > 1) out.push([x, y, iso]);
+    }
+  }
+  return out.sort((a, b) => b[2] - a[2]).slice(0, 12);
+}
+function bestPair(cands, predL, predR) {
+  const dp = dist(predL, predR), ap = Math.atan2(predR[1] - predL[1], predR[0] - predL[0]);
+  const maxV = Math.max(...cands.map((c) => c[2]), 1e-6);
+  let best = null;
+  for (const L of cands) for (const R of cands) {
+    if (L === R || R[0] <= L[0]) continue;
+    const d = dist(L, R), a = Math.atan2(R[1] - L[1], R[0] - L[0]);
+    const cost = Math.abs(Math.log(d / dp)) * 3 + Math.abs(a - ap) * 3 + (dist(L, predL) + dist(R, predR)) / dp * 1.2 - (L[2] + R[2]) / maxV;
+    if (!best || cost < best.cost) best = { L, R, cost }
+  }
+  return best;
+}
+
+function autoAlignFrom(p, src) {
+  const shS = lmPair(src, "shoulders"), shP = lmPair(p, "shoulders");
+  if (!shS || !shP) return null;
+  const hpS = lmPair(src, "hips"), hpP = lmPair(p, "hips");
+  const S = fitSim(hpS && hpP ? [...shS, ...hpS] : shS, hpS && hpP ? [...shP, ...hpP] : shP);
+  // Coppia orizzontale (capezzoli) o verticale (collo e ombelico, collo e schiena...).
+  // L'unità è circa la distanza fra i capezzoli: per una coppia verticale metà della distanza fra i punti
+  const pairMode = !!POSES[src.pose].pair;
+  const [nl, nr] = firstTwo(src);
+  const dAB = dist(nl, nr), unit = pairMode ? dAB : dAB / 2, sigma = Math.hypot(S.a, S.b), theta = Math.atan2(S.b, S.a);
+  const ks = WORK / unit, kp = WORK / (unit * sigma);
+  const imS = workCopy(src, ks), imP = workCopy(p, kp);
+  const mS = mid(nl, nr).map((v) => v * ks);
+  const dir = [(nr[0] - nl[0]) / dAB, (nr[1] - nl[1]) / dAB];
+  const uS = pairMode ? dir : [dir[1], -dir[0]]; // u in orizzontale, v = u ruotato di 90° verso il basso
+  // Il busto intorno ai punti: per i capezzoli dalle clavicole sotto i pettorali, per una coppia verticale tutto il tratto fra i due punti
+  const [a0, a1, b0, b1] = pairMode ? [-1, 1, -0.45, 0.75] : [-0.7, 0.7, -1.15, 1.15];
+  const chest = offsets(a0, a1, b0, b1, 1 / 21), chestFine = offsets(a0, a1, b0, b1, 1 / 32);
+  const T = samples(imS, mS, uS, WORK, chest), Tf = samples(imS, mS, uS, WORK, chestFine);
+  const c0 = apply(S, mid(nl, nr)).map((v) => v * kp), u0 = rot(uS, theta);
+  const coarse = search(T, chest, imP, c0, u0, WORK, { scales: range(0.76, 1.3, 0.03), rots: range(-0.1, 0.1, 0.05), radius: 27, step: 3 });
+  if (coarse.score < 0) return null;
+  const fine = search(Tf, chestFine, imP, coarse.c, coarse.u, coarse.s, { scales: range(0.985, 1.015, 0.015), rots: range(-0.025, 0.025, 0.025), radius: 2, step: 1 });
+  const g = fine.score > coarse.score ? fine : coarse;
+  const e = g.s / WORK, dTheta = Math.atan2(g.u[1], g.u[0]) - Math.atan2(u0[1], u0[0]);
+  // Da foto di partenza (lavoro) a nuova foto (lavoro)
+  const toP = (q) => {
+    const v = rot([(q[0] * ks - mS[0]) * e, (q[1] * ks - mS[1]) * e], theta + dTheta);
+    return [g.c[0] + v[0], g.c[1] + v[1]];
+  };
+  // Ritocco di ogni punto con un riquadro piccolo intorno
+  const small = offsets(-0.13, 0.13, -0.13, 0.13, 1 / 64);
+  const refine = (q, radius, minScore) => {
+    const Ts = samples(imS, q.map((v) => v * ks), uS, WORK, small);
+    const r = search(Ts, small, imP, toP(q), g.u, g.s, { scales: [1], rots: [0], radius, step: 1 });
+    return r.score > minScore ? { pt: r.c, score: r.score } : null;
+  };
+  if (!pairMode) {
+    // Coppia verticale: niente macchie da cercare. Sicuro se il busto e i due punti si ritrovano bene
+    const ref = [nl, nr].map((q) => refine(q, 6, 0.4));
+    const pts = ref.map((r, i) => r?.pt || toP([nl, nr][i]));
+    // Il primo punto (base del collo) ha poca trama: basta che si ritrovi; il secondo (ombelico) deve essere chiaro
+    const sure = g.score >= 0.6 && ref[0]?.score >= 0.4 && ref[1]?.score >= 0.6;
+    return { align: pts.map((q) => q.map((v) => Math.round(v / kp * 10) / 10)), conf: Math.round(g.score * 100) / 100, sure };
+  }
+  const tmplPts = [nl, nr].map((q) => refine(q, 4, 0.4)?.pt || toP(q));
+  // Seconda strada: le due macchie dei capezzoli vicino alla stima. Vince la coppia più simile ai capezzoli di partenza
+  const patch = offsets(-0.13, 0.13, -0.13, 0.13, 1 / 64);
+  const Tn = [nl, nr].map((q) => samples(imS, q.map((v) => v * ks), uS, WORK, patch));
+  const pairScore = (pair) => (nccScore(Tn[0], samples(imP, pair[0], g.u, g.s, patch)) + nccScore(Tn[1], samples(imP, pair[1], g.u, g.s, patch))) / 2;
+  const cm = colorCopy(p.proc, kp);
+  const prior = [nl, nr].map((q) => apply(S, q).map((v) => v * kp));
+  const options = [{ pts: tmplPts, score: pairScore(tmplPts) + 0.02 }];
+  for (const pred of [prior, tmplPts]) {
+    const bp = bestPair(blobCandidates(cm, pred, WORK * 0.45), pred[0], pred[1]);
+    if (bp) { const pts = [bp.L, bp.R].map((q) => [q[0], q[1]]); options.push({ pts, score: pairScore(pts) }); }
+  }
+  const pts = options.sort((a, b) => b.score - a.score)[0].pts;
+  // Sicuro solo se le due strade portano agli stessi punti
+  const tol = WORK * 0.08;
+  const sure = options.length > 1 && options.every((o) => dist(o.pts[0], pts[0]) < tol && dist(o.pts[1], pts[1]) < tol);
+  let navel = null;
+  if (src.align[2] && !src.noThird && handSpot(p) !== "belly") navel = refine(src.align[2], 8, 0.6)?.pt || null;
+  const out = [...pts, ...(navel ? [navel] : [])].map((q) => q.map((v) => Math.round(v / kp * 10) / 10));
+  return { align: out, conf: Math.round(Math.max(g.score, options[0].score) * 100) / 100, sure };
+}
+
+const refFor = (k) => state.photos.filter((q) => q.ref && q.pose === k).sort(byDate)[0] || null;
+
+// Foto da cui partire per una posa: i riferimenti, poi le foto allineate a mano
+function anchorsFor(k) {
+  const manual = state.photos.filter((q) => q.pose === k && q.align.length >= 2 && !q.auto && q.lm?.length).sort(byDate);
+  const refs = manual.filter((q) => q.ref);
+  return (refs.length ? refs : [manual[0], manual[manual.length - 1]]).filter((q, i, a) => q && a.indexOf(q) === i).slice(0, 2);
+}
+
+function autoAlign(p) {
+  const anchors = anchorsFor(p.pose).filter((a) => a !== p);
+  let best = null;
+  for (const a of anchors) {
+    const r = autoAlignFrom(p, a);
+    if (r && (!best || (r.sure && !best.sure) || (r.sure === best.sure && r.conf > best.conf))) best = r;
+  }
+  if (!best || best.conf < 0.3) return false;
+  p.align = best.align;
+  p.noThird = best.align.length < 3;
+  p.auto = { conf: best.conf, sure: best.sure };
+  save(p);
+  return true;
+}
+
+// Coda: posa per le foto nuove, poi allineamento automatico di quelle senza punti
+let queueBusy = false;
+async function processQueue() {
+  if (queueBusy) return;
+  queueBusy = true;
+  let changedAny = false;
+  try {
+    const todo = state.photos.filter((p) => !p.lm);
+    if (todo.length) {
+      if (!poser) toast("Preparo il riconoscimento della posa (solo la prima volta)…");
+      for (const [i, p] of todo.entries()) {
+        if (todo.length > 2) toast(`Riconosco la posa ${i + 1}/${todo.length}…`);
+        await detectPose(p);
+        await new Promise((r) => setTimeout(r));
+      }
+      changedAny = true;
+    }
+    const pending = state.photos.filter((p) => !p.align.length && p.lm?.length && !p.autoSkip && anchorsFor(p.pose).some((a) => a !== p));
+    let done = 0;
+    for (const [i, p] of pending.entries()) {
+      if (pending.length > 1) toast(`Allineo in automatico ${i + 1}/${pending.length}…`);
+      await new Promise((r) => setTimeout(r));
+      if (autoAlign(p)) done++;
+      else p.autoSkip = true;
+      changedAny = true;
+    }
+    const unsure = pending.filter((p) => p.auto && !p.auto.sure).length;
+    if (pending.length) toast(`${done === 1 ? "1 foto allineata" : `${done} foto allineate`} in automatico${unsure ? `: ${unsure} da controllare` : ""}${done < pending.length ? `, ${pending.length - done} da fare a mano` : ""}`);
+  } catch {
+    toast("Il riconoscimento della posa non parte: la prima volta serve internet. Puoi allineare a mano.");
+    state.photos.forEach((p) => { if (!p.lm) p.lm = []; });
+  }
+  queueBusy = false;
+  if (changedAny) refresh();
+  if (state.photos.some((p) => !p.lm)) processQueue();
+}
+
+// ---- consigli rispetto al riferimento
+
+function framing(p) {
+  const sh = lmPair(p, "shoulders");
+  if (!sh) return null;
+  const W = p.proc.width, H = p.proc.height, sw = dist(sh[0], sh[1]), sm = mid(sh[0], sh[1]);
+  // Punto di riferimento per l'altezza: i capezzoli (coppia) o il primo punto (base del collo)
+  const pts = p.align.length >= 2 ? firstTwo(p) : null, pair = !!POSES[p.pose].pair;
+  const anchor = pts ? (pair ? mid(...pts) : pts[0]) : null;
+  const feet = [27, 28].filter((i) => seen(p, i)).map((i) => p.lm[i][1]);
+  return {
+    width: sw / W, cx: sm[0] / W,
+    y: (anchor ? anchor[1] : sm[1]) / H, yFrom: anchor ? (pair ? "nipples" : "neck") : "shoulders",
+    feet: feet.length ? Math.max(...feet) / H : null,
+    tilt: Math.atan2(sh[1][1] - sh[0][1], sh[1][0] - sh[0][0]) * 180 / Math.PI,
+    twist: anchor ? (anchor[0] - sm[0]) / sw : null,
+    hand: handSpot(p),
+  };
+}
+const pctOf = (v) => `${Math.round(v * 100)}%`;
+const Y_LABEL = { nipples: "i capezzoli", neck: "la base del collo", shoulders: "le spalle" };
+function coachTips(p, ref) {
+  const a = framing(p), r = framing(ref);
+  if (!a || !r) return null;
+  const tips = [];
+  const w = a.width / r.width;
+  if (w < 0.92) tips.push(`Foto più lontana dallo specchio: avvicinati, le spalle devono prendere il ${pctOf(r.width)} della foto (qui il ${pctOf(a.width)}).`);
+  else if (w > 1.08) tips.push(`Foto più vicina allo specchio: allontanati, le spalle devono prendere il ${pctOf(r.width)} della foto (qui il ${pctOf(a.width)}).`);
+  if (a.yFrom === r.yFrom && Math.abs(a.y - r.y) > 0.04) tips.push(a.y > r.y ? "Il busto è più in basso nella foto: abbassa un po' il telefono." : "Il busto è più in alto nella foto: alza un po' il telefono.");
+  if (settings.framing === "full" && r.feet && !a.feet) tips.push("I piedi sono fuori dalla foto: inquadra fino ai piedi, come nel riferimento.");
+  if (Math.abs(a.cx - r.cx) > 0.06) tips.push(`Sei più a ${a.cx < r.cx ? "sinistra" : "destra"} nell'inquadratura: mettiti dove sei nel riferimento.`);
+  if (Math.abs(a.tilt - r.tilt) > 4) tips.push(`Spalle o telefono storti di ${Math.round(Math.abs(a.tilt - r.tilt))}°: tieni il telefono dritto (accendi la griglia della fotocamera).`);
+  if (a.twist != null && r.twist != null && Math.abs(a.twist - r.twist) > 0.06) tips.push("Busto girato: mettiti dritto verso lo specchio.");
+  if (a.hand === "belly") tips.push("La mano copre la pancia: tienila lungo il fianco.");
+  if (a.hand === "chest") tips.push("La mano copre il petto: tienila lungo il fianco.");
+  return tips;
+}
+
+// ------------------------------------------------------------------ prepara
+
+const editCanvas = $("#editCanvas");
+const loupe = $("#loupe");
+const pointRadius = () => Math.max(5, editCanvas.width / (MOBILE ? 80 : 120));
+
+function drawPoints(ctx, pts, color, labels, r) {
+  ctx.font = `700 ${Math.round(r * 2)}px -apple-system, sans-serif`;
+  ctx.textBaseline = "middle";
+  pts.forEach((q, i) => {
+    ctx.beginPath();
+    ctx.arc(q[0], q[1], r * 1.9, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(0,0,0,.35)";
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(q[0], q[1], r, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.lineWidth = r / 2.5;
+    ctx.strokeStyle = "#fff";
+    ctx.stroke();
+    ctx.lineWidth = r / 1.4;
+    ctx.strokeStyle = "rgba(0,0,0,.75)";
+    ctx.strokeText(labels[i], q[0] + r * 1.8, q[1] - r * 1.6);
+    ctx.fillStyle = "#fff";
+    ctx.fillText(labels[i], q[0] + r * 1.8, q[1] - r * 1.6);
+  });
+}
+
+function drawEditor() {
+  const p = state.selected;
+  if (!p) return;
+  if (editCanvas.width !== p.proc.width || editCanvas.height !== p.proc.height) {
+    editCanvas.width = p.proc.width;
+    editCanvas.height = p.proc.height;
+  }
+  const ctx = editCanvas.getContext("2d");
+  ctx.drawImage(p.proc, 0, 0);
+  const r = pointRadius();
+  ctx.lineWidth = r / 2;
+  ctx.setLineDash([r * 1.5, r]);
+  ctx.strokeStyle = "rgba(255, 162, 76, .95)";
+  const shown = POSES[p.pose].measures.filter((id) => p.meas[id]?.length);
+  for (const id of shown) {
+    if (p.meas[id].length < 2) continue;
+    ctx.beginPath();
+    ctx.moveTo(...p.meas[id][0]);
+    ctx.lineTo(...p.meas[id][1]);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  drawPoints(ctx, p.align, "#4cc2ff", ["1", "2", "3"], r);
+  for (const id of shown) drawPoints(ctx, p.meas[id], "#ffa24c", p.meas[id].map(() => MEASURES[p.pose][id].name[0]), r);
+}
+
+function currentSteps(p) {
+  if (state.mode === "align") return alignSteps(p).map((s) => ({ name: s.name, hint: s.hint, optional: s.optional }));
+  return measureSteps(p);
+}
+
+function updatePrepare() {
+  const p = state.selected;
+  if (!p) return;
+  const pose = POSES[p.pose];
+  $("#photoTitle").textContent = p.date ? fmtDate(p.date) : "Senza data";
+  $("#photoSub").textContent = p.name;
+  $("#dateInput").value = p.date || "";
+  $("#poseInput").value = p.pose;
+  $("#flipBtn").setAttribute("aria-pressed", p.flip);
+  $("#brightInput").value = p.bright;
+  $("#contrastInput").value = p.contrast;
+  $("#brightOut").textContent = p.bright;
+  $("#contrastOut").textContent = p.contrast;
+  $("#resetAdjust").disabled = !p.flip && !p.bright && !p.contrast;
+  $("#modeAlign").setAttribute("aria-pressed", state.mode === "align");
+  $("#modeMeasure").setAttribute("aria-pressed", state.mode === "measure");
+  $("#modeMeasure").disabled = !p.M;
+
+  const steps = currentSteps(p);
+  const doneAt = (i) => state.mode === "align" ? i < p.align.length : stepDone(p, steps[i]);
+  const current = steps.findIndex((s, i) => !doneAt(i));
+  const anyDone = steps.some((s, i) => doneAt(i));
+  const ol = $("#steps");
+  ol.className = `steps ${state.mode}`;
+  ol.innerHTML = steps.length ? steps.map((s, i) => {
+    const cls = doneAt(i) ? "done" : i === current ? "current" : "";
+    const num = state.mode === "align" ? i + 1 : MEASURES[p.pose][s.id].name[0];
+    return `<li class="${cls}"><span class="num">${doneAt(i) ? "✓" : num}</span>${esc(s.name)}${s.optional ? '<span class="opt">facoltativo</span>' : ""}</li>`;
+  }).join("") : '<li>Nessuna misura scelta per questa posa: cambiale in Impostazioni.</li>';
+
+  $("#undoBtn").disabled = !anyDone;
+  $("#clearBtn").disabled = !anyDone;
+  $("#skipBtn").hidden = !(state.mode === "align" && pose.align[2]?.optional && p.align.length === 2 && !p.noThird);
+  const refs = state.photos.filter((q) => q.ref).length;
+  $("#refBtn").setAttribute("aria-pressed", p.ref);
+  $("#refBtn span").textContent = p.ref ? "Riferimento · togli" : "Usa come riferimento";
+  $("#refBtn").disabled = !p.ref && refs >= MAX_REFS;
+  $("#refBtn").title = $("#refBtn").disabled ? `Hai già ${MAX_REFS} riferimenti: togline uno` : "La foto resta salvata solo in questo browser";
+  const ref = refFor(p.pose);
+  const tips = ref && ref !== p ? coachTips(p, ref) : null;
+  $("#coachSection").hidden = !tips;
+  if (tips) $("#coachTips").innerHTML = tips.length ? tips.map((t) => `<li>${esc(t)}</li>`).join("") : '<li class="ok">Inquadratura uguale al riferimento.</li>';
+  $("#confirmBtn").hidden = !(state.mode === "align" && p.auto && !p.auto.sure);
+  $("#autoBtn").hidden = !(state.mode === "align" && p.lm?.length && anchorsFor(p.pose).some((a) => a !== p));
+  $("#stepNote").innerHTML = state.mode === "align"
+    ? (p.auto ? (p.auto.sure ? "Punti messi in automatico. Se sono sbagliati, trascinali." : "Punti messi in automatico ma incerti: se sono al posto giusto premi Sono giusti, se no trascinali. Finché non li controlli la foto non conta nell'analisi.")
+      : "Usa gli stessi punti in tutte le foto della stessa posa. Trascina un punto per correggerlo.")
+    : "Le misure sono facoltative. Cosa misurare si sceglie in Impostazioni.";
+
+  const coach = $("#coach");
+  if (current >= 0) {
+    coach.className = `coach ${state.mode}`;
+    const hint = MOBILE ? steps[current].hint.replace(/Clicca/g, "Tocca").replace(/clicca/g, "tocca") : steps[current].hint;
+    coach.innerHTML = `${current + 1}/${steps.length} · ${hint}${MOBILE && !anyDone ? " Tieni il dito e trascina: il punto si fissa quando lo alzi." : ""}`;
+  } else {
+    coach.className = "coach done";
+    coach.textContent = state.mode === "align"
+      ? (measureComplete(p) ? "Foto pronta" : "Foto allineata · le misure sono facoltative")
+      : steps.length ? "Misure fatte" : "Nessuna misura scelta";
+  }
+}
+
+function toCanvas(e, canvas) {
+  const rect = canvas.getBoundingClientRect();
+  return [(e.clientX - rect.left) * canvas.width / rect.width, (e.clientY - rect.top) * canvas.height / rect.height];
+}
+
+// Lente d'ingrandimento accanto al puntatore, per mettere i punti con precisione
+function showLoupe(e) {
+  const rect = editCanvas.getBoundingClientRect();
+  const [x, y] = toCanvas(e, editCanvas);
+  const zoom = 3, size = 150;
+  const src = size / zoom * editCanvas.width / rect.width;
+  const ctx = loupe.getContext("2d");
+  ctx.clearRect(0, 0, loupe.width, loupe.height);
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(loupe.width / 2, loupe.height / 2, loupe.width / 2, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, loupe.width, loupe.height);
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(editCanvas, x - src / 2, y - src / 2, src, src, 0, 0, loupe.width, loupe.height);
+  ctx.restore();
+  const c = loupe.width / 2;
+  ctx.strokeStyle = "rgba(255,255,255,.9)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(c - 18, c); ctx.lineTo(c - 6, c);
+  ctx.moveTo(c + 6, c); ctx.lineTo(c + 18, c);
+  ctx.moveTo(c, c - 18); ctx.lineTo(c, c - 6);
+  ctx.moveTo(c, c + 6); ctx.lineTo(c, c + 18);
+  ctx.stroke();
+  const px = e.clientX - rect.left, py = e.clientY - rect.top;
+  if (e.pointerType === "mouse") {
+    loupe.style.left = `${px + 24 + size > rect.width ? px - 24 - size : px + 24}px`;
+    loupe.style.top = `${Math.min(Math.max(py - size / 2, 4), rect.height - size - 4)}px`;
+  } else {
+    // Col dito la lente sta sopra il dito (o sotto, vicino al bordo in alto), così si vede il punto.
+    // Il suggerimento in alto si nasconde finché il dito è giù
+    $("#coach").classList.add("away");
+    loupe.style.left = `${Math.min(Math.max(px - size / 2, 4), rect.width - size - 4)}px`;
+    loupe.style.top = `${py - size - 56 >= 0 ? py - size - 56 : py + 56}px`;
+  }
+  loupe.hidden = false;
+}
+
+let drag = null;
+editCanvas.addEventListener("pointerdown", (e) => {
+  const p = state.selected;
+  if (!p) return;
+  const q = toCanvas(e, editCanvas);
+  const reach = pointRadius() * (e.pointerType === "mouse" ? 3 : 4.5);
+  drag = null;
+  const hit = { align: () => p.align.forEach((pt, i) => { if (!drag && dist(pt, q) < reach) drag = { set: "align", i }; }),
+    measure: () => POSES[p.pose].measures.forEach((id) => (p.meas[id] || []).forEach((pt, i) => { if (!drag && dist(pt, q) < reach) drag = { set: "measure", id, i }; })) };
+  hit[state.mode]();
+  hit[state.mode === "align" ? "measure" : "align"]();
+  if (drag) {
+    editCanvas.setPointerCapture(e.pointerId);
+    return;
+  }
+  // Col dito il punto nuovo segue il dito finché non lo alzi: si mette al posto giusto guardando la lente
+  const touch = e.pointerType !== "mouse";
+  if (state.mode === "measure") {
+    if (!p.M) return;
+    const next = measureSteps(p).find((s) => !stepDone(p, s));
+    if (!next) return;
+    p.meas[next.id] = p.meas[next.id] || [];
+    p.meas[next.id][next.i] = q;
+    if (touch) { drag = { set: "measure", id: next.id, i: next.i }; editCanvas.setPointerCapture(e.pointerId); drawEditor(); }
+    else changed(p);
+    showLoupe(e);
+  } else if (p.align.length < currentSteps(p).length) {
+    p.align.push(q);
+    p.auto = null;
+    if (touch) { drag = { set: "align", i: p.align.length - 1 }; editCanvas.setPointerCapture(e.pointerId); drawEditor(); }
+    else changed(p);
+    showLoupe(e);
+  }
+});
+editCanvas.addEventListener("pointermove", (e) => {
+  if (drag) {
+    if (drag.set === "align") state.selected.align[drag.i] = toCanvas(e, editCanvas);
+    else state.selected.meas[drag.id][drag.i] = toCanvas(e, editCanvas);
+    drawEditor();
+  }
+  if (e.pointerType === "mouse" || drag) showLoupe(e);
+});
+editCanvas.addEventListener("pointerup", (e) => {
+  if (e.pointerType !== "mouse") { loupe.hidden = true; $("#coach").classList.remove("away"); }
+  if (!drag) return;
+  if (drag.set === "align") state.selected.auto = null;
+  drag = null;
+  changed(state.selected);
+});
+editCanvas.addEventListener("pointerleave", () => { if (!drag) loupe.hidden = true; });
+editCanvas.addEventListener("pointercancel", () => {
+  loupe.hidden = true;
+  $("#coach").classList.remove("away");
+  if (!drag) return;
+  drag = null;
+  changed(state.selected);
+});
+
+function changed(p) {
+  save(p);
+  refresh();
+  processQueue();
+}
+
+let procFrame = 0;
+function scheduleProc(p) {
+  cancelAnimationFrame(procFrame);
+  procFrame = requestAnimationFrame(async () => { await renderProc(p); changed(p); });
+}
+
+$("#poseInput").innerHTML = POSE_KEYS.map((k) => `<option value="${k}">${POSES[k].label}</option>`).join("");
+$("#dateInput").addEventListener("change", (e) => { state.selected.date = e.target.value; changed(state.selected); });
+$("#poseInput").addEventListener("change", (e) => {
+  const p = state.selected;
+  const hadPoints = p.align.length || Object.keys(p.meas).length;
+  p.pose = e.target.value;
+  p.align = [];
+  p.meas = {};
+  p.noThird = false;
+  p.auto = null;
+  p.autoSkip = false;
+  p.tweak = null;
+  state.mode = "align";
+  if (hadPoints) toast("Posa cambiata: i punti di questa foto sono da rifare");
+  changed(p);
+});
+$("#brightInput").addEventListener("input", (e) => { state.selected.bright = +e.target.value; $("#brightOut").textContent = e.target.value; scheduleProc(state.selected); });
+$("#contrastInput").addEventListener("input", (e) => { state.selected.contrast = +e.target.value; $("#contrastOut").textContent = e.target.value; scheduleProc(state.selected); });
+$("#flipBtn").addEventListener("click", async () => {
+  const p = state.selected;
+  const w = p.w;
+  p.flip = !p.flip;
+  p.align = p.align.map(([x, y]) => [w - x, y]);
+  mapMeas(p, ([x, y]) => [w - x, y]);
+  if (p.lm) p.lm = p.lm.map(([x, y, v]) => [w - x, y, v]);
+  await renderProc(p);
+  changed(p);
+});
+$("#resetAdjust").addEventListener("click", async () => {
+  const p = state.selected;
+  if (p.flip) {
+    const w = p.w;
+    p.align = p.align.map(([x, y]) => [w - x, y]);
+    mapMeas(p, ([x, y]) => [w - x, y]);
+    if (p.lm) p.lm = p.lm.map(([x, y, v]) => [w - x, y, v]);
+  }
+  p.flip = false;
+  p.bright = 0;
+  p.contrast = 0;
+  await renderProc(p);
+  changed(p);
+});
+$("#refBtn").addEventListener("click", () => setRef(state.selected, !state.selected.ref));
+$("#confirmBtn").addEventListener("click", () => {
+  const p = state.selected;
+  p.auto = { ...p.auto, sure: true };
+  changed(p);
+});
+$("#autoBtn").addEventListener("click", () => {
+  const p = state.selected;
+  p.align = [];
+  p.noThird = false;
+  p.auto = null;
+  p.autoSkip = false;
+  p.tweak = null;
+  changed(p);
+});
+$("#modeAlign").addEventListener("click", () => { state.mode = "align"; refresh(); });
+$("#modeMeasure").addEventListener("click", () => { state.mode = "measure"; refresh(); });
+$("#skipBtn").addEventListener("click", () => { state.selected.noThird = true; changed(state.selected); });
+$("#undoBtn").addEventListener("click", undo);
+$("#clearBtn").addEventListener("click", () => {
+  const p = state.selected;
+  if (state.mode === "align") { p.align = []; p.noThird = false; p.auto = null; p.autoSkip = true; p.tweak = null; }
+  else POSES[p.pose].measures.forEach((id) => delete p.meas[id]);
+  changed(p);
+});
+function undo() {
+  const p = state.selected;
+  if (!p) return;
+  if (state.mode === "measure") {
+    const last = measureSteps(p).filter((s) => stepDone(p, s)).pop();
+    if (!last) return;
+    p.meas[last.id].splice(last.i, 1);
+    if (!p.meas[last.id].length) delete p.meas[last.id];
+    changed(p);
+    return;
+  }
+  if (!p.align.length) return;
+  p.align.pop();
+  p.auto = null;
+  p.autoSkip = true;
+  if (p.align.length < 2) p.noThird = false;
+  changed(p);
+}
+
+document.addEventListener("keydown", (e) => {
+  if (["INPUT", "SELECT"].includes(e.target.tagName)) return;
+  if ((e.metaKey || e.ctrlKey) && e.key === "z" && state.view === "prepare") {
+    e.preventDefault();
+    undo();
+  }
+  if (state.view === "compare" && !e.metaKey && !e.ctrlKey && tweakTarget()) {
+    const t = tweakTarget().tweak || NO_TWEAK, big = e.shiftKey ? 5 : 1;
+    const keys = {
+      ArrowLeft: ["x", t.x - big], ArrowRight: ["x", t.x + big], ArrowUp: ["y", t.y - big], ArrowDown: ["y", t.y + big],
+      "+": ["s", t.s + 0.5 * big], "=": ["s", t.s + 0.5 * big], "-": ["s", t.s - 0.5 * big],
+      "<": ["r", t.r - 0.25 * big], ",": ["r", t.r - 0.25 * big], ">": ["r", t.r + 0.25 * big], ".": ["r", t.r + 0.25 * big],
+    };
+    if (keys[e.key]) {
+      e.preventDefault();
+      setTweak(...keys[e.key], true);
+      return;
+    }
+  }
+  if ((e.key === "ArrowDown" || e.key === "ArrowUp") && state.view === "prepare" && state.selected) {
+    const list = sorted();
+    const i = list.indexOf(state.selected) + (e.key === "ArrowDown" ? 1 : -1);
+    if (list[i]) {
+      e.preventDefault();
+      state.selected = list[i];
+      refresh();
+    }
+  }
+});
+
+function renderSidebar() {
+  const bar = $("#sidebar");
+  bar.innerHTML = "";
+  for (const k of POSE_KEYS) {
+    const group = state.photos.filter((p) => p.pose === k).sort(byDate);
+    if (!group.length) continue;
+    const head = document.createElement("div");
+    head.className = "group-title";
+    head.innerHTML = `<span>${POSES[k].label}</span><span>${group.length}</span>`;
+    bar.append(head);
+    for (const p of group) {
+      const row = document.createElement("div");
+      row.className = "row";
+      const item = document.createElement("button");
+      item.className = "item";
+      item.setAttribute("aria-current", p === state.selected && state.view === "prepare");
+      const status = !p.M ? (p.lm || p.align.length ? '<span class="pill">Da allineare</span>' : '<span class="pill">Riconosco la posa…</span>')
+        : p.auto ? (!p.auto.sure ? '<span class="pill yellow">Da controllare</span>' : '<span class="pill blue"><svg class="icon"><use href="#i-sparkle"/></svg>Allineata</span>')
+        : measureComplete(p) ? '<span class="pill green">Con misure</span>' : '<span class="pill blue">Allineata</span>';
+      const pill = `<span class="pills">${p.ref ? '<span class="pill accent"><svg class="icon"><use href="#i-star"/></svg>Riferimento</span>' : ""}${status}</span>`;
+      item.innerHTML = `<img alt="" src="${p.thumb}"><span class="txt"><span class="date">${p.date ? fmtDate(p.date) : "Senza data"}</span>`
+        + `<span class="name">${esc(p.name)}</span><span>${pill}</span></span>`;
+      item.addEventListener("click", () => { state.selected = p; state.view = "prepare"; refresh(); });
+      const remove = document.createElement("button");
+      remove.className = "remove";
+      remove.innerHTML = '<svg class="icon"><use href="#i-x"/></svg>';
+      remove.setAttribute("aria-label", `Togli ${p.name} dall'elenco`);
+      remove.title = "Togli dall'elenco";
+      remove.addEventListener("click", () => {
+        state.photos = state.photos.filter((x) => x !== p);
+        if (state.selected === p) state.selected = sorted()[0] || null;
+        refresh();
+      });
+      row.append(item, remove);
+      bar.append(row);
+    }
+  }
+}
+
+// ------------------------------------------------------------------ confronta
+
+const compareCanvas = $("#compareCanvas");
+const readyFor = (k) => state.photos.filter((p) => p.pose === k && p.M).sort(byDate);
+
+function drawAligned(ctx, p, ox) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(ox, 0, CW, CH);
+  ctx.clip();
+  ctx.fillStyle = "#111114";
+  ctx.fillRect(ox, 0, CW, CH);
+  ctx.translate(ox, 0);
+  ctx.transform(p.M.a, p.M.b, -p.M.b, p.M.a, p.M.tx, p.M.ty);
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(p.proc, 0, 0);
+  ctx.restore();
+}
+
+function tag(ctx, title, text, x, align) {
+  ctx.font = "600 15px -apple-system, sans-serif";
+  const tw = ctx.measureText(title).width;
+  ctx.font = "500 15px -apple-system, sans-serif";
+  const w = tw + ctx.measureText(text).width + 34;
+  const left = align === "right" ? x - w : x;
+  ctx.fillStyle = "rgba(14, 14, 16, .78)";
+  ctx.beginPath();
+  ctx.roundRect(left, 14, w, 30, 15);
+  ctx.fill();
+  ctx.textBaseline = "middle";
+  ctx.font = "700 15px -apple-system, sans-serif";
+  ctx.fillStyle = "#fff";
+  ctx.fillText(title, left + 14, 29);
+  ctx.font = "500 15px -apple-system, sans-serif";
+  ctx.fillStyle = "#c9c9d1";
+  ctx.fillText(text, left + 20 + tw, 29);
+}
+
+function guides(ctx, width, k) {
+  const ys = [...new Set([...POSES[k].targets.map((t) => t[1]), state.thirds[k]?.[1]].filter(Boolean).map(Math.round))];
+  ctx.save();
+  ctx.strokeStyle = "rgba(255, 255, 255, .55)";
+  ctx.setLineDash([6, 6]);
+  ctx.lineWidth = 1;
+  for (const y of ys) {
+    ctx.beginPath();
+    ctx.moveTo(0, y + .5);
+    ctx.lineTo(width, y + .5);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawCompare() {
+  const k = state.comparePose;
+  const ready = readyFor(k);
+  const A = ready.find((p) => p.key === $("#selA").value);
+  const B = ready.find((p) => p.key === $("#selB").value);
+  if (!A || !B) return;
+  const side = state.cmode === "side";
+  compareCanvas.width = side ? CW * 2 + 6 : CW;
+  compareCanvas.height = CH;
+  compareCanvas.classList.toggle("wipe", state.cmode === "wipe");
+  const ctx = compareCanvas.getContext("2d");
+  ctx.fillStyle = "#0e0e10";
+  ctx.fillRect(0, 0, compareCanvas.width, CH);
+  const showGuides = $("#guidesInput").checked;
+
+  if (side) {
+    drawAligned(ctx, A, 0);
+    drawAligned(ctx, B, CW + 6);
+    if (showGuides) guides(ctx, compareCanvas.width, k);
+    tag(ctx, "Prima", labelOf(A), 14, "left");
+    tag(ctx, "Dopo", labelOf(B), CW + 20, "left");
+  } else if (state.cmode === "wipe") {
+    const x = Math.round(CW * state.wipe / 100);
+    drawAligned(ctx, B, 0);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, x, CH);
+    ctx.clip();
+    drawAligned(ctx, A, 0);
+    ctx.restore();
+    if (showGuides) guides(ctx, CW, k);
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(x - 1, 0, 2, CH);
+    ctx.beginPath();
+    ctx.arc(x, CH / 2, 16, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#0e0e10";
+    ctx.beginPath();
+    ctx.moveTo(x - 9, CH / 2); ctx.lineTo(x - 3, CH / 2 - 6); ctx.lineTo(x - 3, CH / 2 + 6); ctx.closePath();
+    ctx.moveTo(x + 9, CH / 2); ctx.lineTo(x + 3, CH / 2 - 6); ctx.lineTo(x + 3, CH / 2 + 6); ctx.closePath();
+    ctx.fill();
+    tag(ctx, "Prima", labelOf(A), 14, "left");
+    tag(ctx, "Dopo", labelOf(B), CW - 14, "right");
+  } else if (state.cmode === "diff") {
+    drawDiff(ctx, A, B, state.analysis);
+    if (showGuides) guides(ctx, CW, k);
+  } else {
+    drawAligned(ctx, B, 0);
+    ctx.globalAlpha = state.fade / 100;
+    drawAligned(ctx, A, 0);
+    ctx.globalAlpha = 1;
+    if (showGuides) guides(ctx, CW, k);
+    tag(ctx, "Prima", `${labelOf(A)} · ${state.fade}%`, 14, "left");
+    tag(ctx, "Dopo", labelOf(B), CW - 14, "right");
+  }
+}
+
+function fillCompareControls() {
+  const poses = POSE_KEYS.filter((k) => readyFor(k).length >= 2);
+  if (!poses.includes(state.comparePose)) state.comparePose = poses[0];
+  $("#comparePose").innerHTML = poses.map((k) => `<option value="${k}">${POSES[k].label} · ${readyFor(k).length} foto</option>`).join("");
+  $("#comparePose").value = state.comparePose;
+  const ready = readyFor(state.comparePose);
+  for (const [id, fallback] of [["#selA", ready[0]], ["#selB", ready[ready.length - 1]]]) {
+    const sel = $(id);
+    const current = ready.some((p) => p.key === sel.value) ? sel.value : fallback.key;
+    sel.innerHTML = ready.map((p) => `<option value="${esc(p.key)}">${esc(labelOf(p))}</option>`).join("");
+    sel.value = current;
+  }
+  document.querySelectorAll("[data-cmode]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.cmode === state.cmode));
+  $("#valueGroup").hidden = state.cmode === "side" || state.cmode === "diff";
+  $("#valueLabel").textContent = state.cmode === "wipe" ? "Cursore" : "Prima";
+  const v = state.cmode === "wipe" ? state.wipe : state.fade;
+  $("#valueInput").value = v;
+  $("#valueOut").textContent = `${v}%`;
+}
+
+document.querySelectorAll("[data-cmode]").forEach((b) => b.addEventListener("click", () => {
+  state.cmode = b.dataset.cmode;
+  fillCompareControls();
+  drawCompare();
+}));
+$("#valueInput").addEventListener("input", (e) => {
+  state[state.cmode === "wipe" ? "wipe" : "fade"] = +e.target.value;
+  $("#valueOut").textContent = `${e.target.value}%`;
+  drawCompare();
+});
+$("#comparePose").addEventListener("change", (e) => {
+  state.comparePose = e.target.value;
+  $("#selA").value = "";
+  $("#selB").value = "";
+  refresh();
+});
+["#selA", "#selB", "#guidesInput"].forEach((s) => $(s).addEventListener("change", () => { drawCompare(); fillTweak(); }));
+
+// ---- ritocco a mano
+state.tweakSide = "B";
+const tweakTarget = () => state.photos.find((p) => p.key === $(state.tweakSide === "A" ? "#selA" : "#selB").value);
+const tweakText = { s: (v) => `${signed(v, v % 1 ? 1 : 0)}%`, r: (v) => `${signed(v, v % 1 ? 2 : 0).replace(/,?0+$/, "")}°`, x: (v) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v)}`, y: (v) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v)}` };
+function fillTweak() {
+  const p = tweakTarget(), t = p?.tweak || NO_TWEAK;
+  document.querySelectorAll("[data-tweak]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.tweak === state.tweakSide));
+  document.querySelectorAll("[data-t]").forEach((input) => {
+    input.value = t[input.dataset.t];
+    $(`[data-o="${input.dataset.t}"]`).textContent = tweakText[input.dataset.t](t[input.dataset.t]);
+  });
+  $("#tweakReset").disabled = !p || !hasTweak(p);
+}
+let tweakTimer = 0;
+function setTweak(key, value, live) {
+  const p = tweakTarget();
+  if (!p) return;
+  const limits = { s: 15, r: 10, x: 40, y: 40 };
+  p.tweak = { ...NO_TWEAK, ...p.tweak, [key]: Math.max(-limits[key], Math.min(limits[key], Math.round(value * 100) / 100)) };
+  if (state.cmode === "side" || state.cmode === "diff") { state.cmode = "fade"; fillCompareControls(); }
+  computeTransforms();
+  drawCompare();
+  fillTweak();
+  // Analisi e salvataggio quando ti fermi
+  clearTimeout(tweakTimer);
+  tweakTimer = setTimeout(() => { save(p); refresh(); }, live ? 400 : 0);
+}
+document.querySelectorAll("[data-tweak]").forEach((b) => b.addEventListener("click", () => { state.tweakSide = b.dataset.tweak; fillTweak(); }));
+document.querySelectorAll("[data-t]").forEach((input) => input.addEventListener("input", () => setTweak(input.dataset.t, +input.value, true)));
+$("#tweakReset").addEventListener("click", () => {
+  const p = tweakTarget();
+  if (!p) return;
+  p.tweak = null;
+  save(p);
+  refresh();
+});
+compareCanvas.addEventListener("pointerdown", (e) => { compareCanvas.setPointerCapture(e.pointerId); wipeDrag(e); });
+compareCanvas.addEventListener("pointermove", (e) => { if (e.buttons) wipeDrag(e); });
+function wipeDrag(e) {
+  if (state.cmode !== "wipe") return;
+  state.wipe = Math.round(Math.min(100, Math.max(0, toCanvas(e, compareCanvas)[0] / CW * 100)));
+  $("#valueInput").value = state.wipe;
+  $("#valueOut").textContent = `${state.wipe}%`;
+  drawCompare();
+}
+$("#downloadBtn").addEventListener("click", () => {
+  const A = state.photos.find((p) => p.key === $("#selA").value);
+  const B = state.photos.find((p) => p.key === $("#selB").value);
+  const a = document.createElement("a");
+  a.download = `confronto-${state.comparePose}-${A?.date || "prima"}-${B?.date || "dopo"}.png`;
+  a.href = compareCanvas.toDataURL("image/png");
+  a.click();
+});
+
+function renderResults(an) {
+  const rows = an.used.filter((r) => r.m);
+  const box = $("#results");
+  box.hidden = !rows.length;
+  if (!rows.length) return;
+  // Un rapporto (il primo che c'è) e fino a 3 misure, ognuna rispetto alla prima foto che ce l'ha
+  const ratio = POSES[an.k].ratios.find((r) => rows.some((x) => x.m.ratios[r.id]));
+  const ids = POSES[an.k].measures.filter((id) => rows.some((x) => x.m.values[id])).slice(0, ratio ? 3 : 4);
+  const first = Object.fromEntries(ids.map((id) => [id, rows.find((x) => x.m.values[id]).m.values[id]]));
+  const pct = (v) => `<span class="${Math.abs(v) < NOISE.width ? "" : v > 0 ? "up" : "down"}">${signed(v * 100)}%</span>`;
+  const short = (name) => name.length > 9 ? `${name.slice(0, 8)}.` : name;
+  let html = `<span class="section-title">Numeri</span><table><thead><tr><th>Foto</th>${ratio ? `<th title="${esc(ratio.name)}">${esc(short(ratio.name))}</th>` : ""}`
+    + ids.map((id) => `<th>${esc(short(MEASURES[an.k][id].name))}</th>`).join("") + `</tr></thead><tbody>`;
+  for (const { p, m } of rows) {
+    html += `<tr><td>${esc(labelOf(p))}</td>${ratio ? `<td>${m.ratios[ratio.id] ? num(m.ratios[ratio.id], 2) : "–"}</td>` : ""}`
+      + ids.map((id) => `<td>${m.values[id] ? pct(m.values[id] / first[id] - 1) : "–"}</td>`).join("") + `</tr>`;
+  }
+  html += `</tbody></table>`;
+  const series = ratio ? rows.filter((x) => x.m.ratios[ratio.id]).map((x) => ({ p: x.p, v: x.m.ratios[ratio.id] }))
+    : rows.filter((x) => x.m.values[ids[0]]).map((x) => ({ p: x.p, v: x.m.values[ids[0]] / first[ids[0]] }));
+  if (series.length >= 2) html += chart(series, ratio ? ratio.name : `${MEASURES[an.k][ids[0]].name} (1 = prima foto)`);
+  html += `<p class="note">Le misure sono rispetto alla prima foto misurata.</p>`;
+  box.innerHTML = html;
+}
+
+function chart(rows, title) {
+  const W = 280, H = 150, L = 34, R = 10, T = 26, B = 26;
+  const useDates = rows.every((r) => r.p.date);
+  const xs = rows.map((r, i) => useDates ? new Date(r.p.date).getTime() : i);
+  const ys = rows.map((r) => r.v);
+  const [x0, x1] = [Math.min(...xs), Math.max(...xs)];
+  const pad = Math.max(0.04, (Math.max(...ys) - Math.min(...ys)) * 0.25);
+  const [y0, y1] = [Math.min(...ys) - pad, Math.max(...ys) + pad];
+  const X = (x) => L + (x1 === x0 ? 0.5 : (x - x0) / (x1 - x0)) * (W - L - R);
+  const Y = (y) => T + (1 - (y - y0) / (y1 - y0)) * (H - T - B);
+  const line = rows.map((r, i) => `${X(xs[i]).toFixed(1)},${Y(ys[i]).toFixed(1)}`).join(" ");
+  const area = `${X(xs[0]).toFixed(1)},${H - B} ${line} ${X(xs[xs.length - 1]).toFixed(1)},${H - B}`;
+  const grid = [y0 + pad, (y0 + y1) / 2, y1 - pad].map((v) =>
+    `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" stroke="#2a2a30"/><text x="${L - 6}" y="${Y(v) + 4}" fill="#6c6c76" font-size="10" text-anchor="end">${num(v, 2)}</text>`).join("");
+  const dots = rows.map((r, i) => `<circle cx="${X(xs[i])}" cy="${Y(ys[i])}" r="3.5" fill="#0e0e10" stroke="#4f8cff" stroke-width="2"><title>${esc(labelOf(r.p))}: ${num(ys[i], 2)}</title></circle>`).join("");
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(title)} nel tempo">
+    <defs><linearGradient id="g" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#4f8cff" stop-opacity=".35"/><stop offset="1" stop-color="#4f8cff" stop-opacity="0"/></linearGradient></defs>
+    <text x="0" y="12" fill="#9b9ba5" font-size="11">${esc(title)} nel tempo</text>
+    ${grid}
+    <polygon points="${area}" fill="url(#g)"/>
+    <polyline points="${line}" fill="none" stroke="#4f8cff" stroke-width="2" stroke-linejoin="round"/>${dots}
+    <text x="${L}" y="${H - 8}" fill="#6c6c76" font-size="10">${esc(labelOf(rows[0].p))}</text>
+    <text x="${W - R}" y="${H - 8}" fill="#6c6c76" font-size="10" text-anchor="end">${esc(labelOf(rows[rows.length - 1].p))}</text>
+  </svg>`;
+}
+
+// ------------------------------------------------------------------ analisi
+//
+// Tutto calcolato qui, sulle foto già allineate (tela 600×800, capezzoli a 140 px):
+// 1. affidabilità: ogni foto contro le altre della stessa posa (inclinazione, distanza,
+//    angolazione, luce). Le foto molto diverse escono dal conto da sole.
+// 2. tendenza: retta ai minimi quadrati su tutte le foto, non solo prima e ultima.
+//    Un cambio "si vede" solo se supera due volte il margine d'errore.
+// 3. definizione: contrasto fine della pelle (le ombre fra i muscoli) diviso la luce
+//    locale. Dipende dalla luce, quindi conta solo fra foto con luce simile.
+
+const NOISE = { width: 0.03, ratio: 0.025, def: 0.12 }; // errore minimo di una foto: clic, posa, respiro
+const num = (v, d = 1) => v.toFixed(d).replace(".", ",");
+const signed = (v, d = 1) => { const s = num(Math.abs(v), d); return (/^0,?0*$/.test(s) ? "" : v > 0 ? "+" : "−") + s; };
+const median = (xs) => { const s = [...xs].sort((a, b) => a - b), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+
+function boxBlur(src, w, h, r) {
+  const tmp = new Float32Array(w * h), out = new Float32Array(w * h), k = 1 / (2 * r + 1);
+  for (let y = 0; y < h; y++) {
+    const o = y * w;
+    let s = 0;
+    for (let x = -r; x <= r; x++) s += src[o + Math.min(w - 1, Math.max(0, x))];
+    for (let x = 0; x < w; x++) {
+      tmp[o + x] = s * k;
+      s += src[o + Math.min(w - 1, x + r + 1)] - src[o + Math.max(0, x - r)];
+    }
+  }
+  for (let x = 0; x < w; x++) {
+    let s = 0;
+    for (let y = -r; y <= r; y++) s += tmp[Math.min(h - 1, Math.max(0, y)) * w + x];
+    for (let y = 0; y < h; y++) {
+      out[y * w + x] = s * k;
+      s += tmp[Math.min(h - 1, y + r + 1) * w + x] - tmp[Math.max(0, y - r) * w + x];
+    }
+  }
+  return out;
+}
+const blur2 = (src, r) => boxBlur(boxBlur(src, CW, CH, r), CW, CH, r);
+
+// Mappe della foto allineata: luce, dove c'è foto, dettaglio fine (definizione)
+const mapCache = new Map();
+function mapsOf(p) {
+  const sig = [p.M.a, p.M.b, p.M.tx, p.M.ty, p.flip, p.bright, p.contrast, CW, CH].join();
+  const hit = mapCache.get(p.key);
+  if (hit?.sig === sig) return hit;
+  const c = document.createElement("canvas");
+  c.width = CW;
+  c.height = CH;
+  const ctx = c.getContext("2d", { willReadFrequently: true });
+  ctx.setTransform(p.M.a, p.M.b, -p.M.b, p.M.a, p.M.tx, p.M.ty);
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(p.proc, 0, 0);
+  const d = ctx.getImageData(0, 0, CW, CH).data;
+  const n = CW * CH, lum = new Float32Array(n), mask = new Uint8Array(n);
+  for (let i = 0; i < n; i++) {
+    lum[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
+    mask[i] = d[i * 4 + 3] > 250 ? 1 : 0;
+  }
+  const fine = blur2(lum, 1), coarse = blur2(lum, 8), detail = new Float32Array(n);
+  for (let i = 0; i < n; i++) detail[i] = Math.abs(fine[i] - coarse[i]) / (coarse[i] + 12);
+  const maps = { sig, lum, mask, detail, smooth: blur2(detail, 10) };
+  mapCache.set(p.key, maps);
+  while (mapCache.size > 6) mapCache.delete(mapCache.keys().next().value);
+  return maps;
+}
+
+// Zone in cui si misura la definizione, nella tela del confronto
+// Rettangolo in unità del corpo (x dal centro, y dalla base del collo) → pixel della tela
+const zoneRect = (ux0, uy0, ux1, uy1) => [...body(ux0, uy0), ...body(ux1, uy1)].map(Math.round);
+function zonesFor(k, photos) {
+  if (!settings.definition) return [];
+  if (k === "front") {
+    const navel = state.thirds.front ? (state.thirds.front[1] - body(0, 0)[1]) / LAYOUTS[settings.framing].U : 1;
+    const abs = { name: "Addome", where: "nell'addome", r: zoneRect(-0.2, 0.63, 0.2, Math.max(0.85, Math.min(1.35, navel + 0.1))) };
+    return settings.who === "female" ? [abs] : [{ name: "Petto", where: "nel petto", r: zoneRect(-0.356, 0.29, 0.356, 0.59) }, abs];
+  }
+  if (k === "back") return [{ name: "Schiena", where: "nella schiena", r: zoneRect(-0.356, 0.17, 0.356, 0.915) }];
+  // Di lato non si sa da che parte guarda: si usa lo spazio fra i bordi misurati di petto o pancia
+  const edges = photos.map((p) => p.meas.chest?.length === 2 ? p.meas.chest : p.meas.waist?.length === 2 ? p.meas.waist : null).map((m, i) => m && m.map((q) => apply(photos[i].M, q)[0]).sort((a, b) => a - b)).filter(Boolean);
+  if (!edges.length) return [];
+  const x0 = median(edges.map((e) => e[0])), x1 = median(edges.map((e) => e[1])), pad = (x1 - x0) * 0.15;
+  const [, y0] = body(0, NIP_Y - 0.03), [, y1] = body(0, 1.05);
+  return x1 - x0 > 40 ? [{ name: "Busto", where: "nel busto", r: [x0 + pad, y0, x1 - pad, y1].map(Math.round) }] : [];
+}
+
+// Statistiche di una zona, tenute a parte: così le mappe grandi non restano tutte in memoria
+const statsCache = new Map();
+function zoneStatsOf(p, r) {
+  const k = `${p.key}|${[p.M.a, p.M.b, p.M.tx, p.M.ty, p.flip, p.bright, p.contrast, CW, CH].join()}|${r.join()}`;
+  if (!statsCache.has(k)) {
+    if (statsCache.size > 600) statsCache.clear();
+    statsCache.set(k, zoneStats(mapsOf(p), r));
+  }
+  return statsCache.get(k);
+}
+function zoneStats(maps, r) {
+  const [x0, y0, x1, y1] = r.map(Math.round), xm = (x0 + x1) / 2, ym = (y0 + y1) / 2;
+  let total = 0, n = 0, det = 0, sum = 0;
+  const half = { l: [0, 0], r: [0, 0], t: [0, 0], b: [0, 0] };
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x < x1; x++) {
+      total++;
+      const i = y * CW + x;
+      if (!maps.mask[i]) continue;
+      const v = maps.lum[i];
+      n++;
+      det += maps.detail[i];
+      sum += v;
+      const hx = half[x < xm ? "l" : "r"], hy = half[y < ym ? "t" : "b"];
+      hx[0] += v; hx[1]++; hy[0] += v; hy[1]++;
+    }
+  }
+  if (!n) return { cover: 0 };
+  const mean = sum / n, avg = (h) => h[1] ? h[0] / h[1] : mean;
+  return {
+    cover: n / total, def: det / n * 100, mean,
+    lr: (avg(half.r) - avg(half.l)) / (mean + 1), tb: (avg(half.b) - avg(half.t)) / (mean + 1),
+  };
+}
+
+// Zone della definizione coperte da una mano (centro della mano dentro la zona, con un po' di margine)
+function coveredZones(p, zones) {
+  if (!p.lm?.length || !p.M) return [];
+  const hs = hands(p).map((q) => apply(p.M, q));
+  const m = LAYOUTS[settings.framing].U * 0.085;
+  return zones.map((z, j) => hs.some(([x, y]) => x > z.r[0] - m && x < z.r[2] + m && y > z.r[1] - m && y < z.r[3] + m) ? j : -1).filter((j) => j >= 0);
+}
+
+// Dove finisce l'ombelico allineando solo sui capezzoli: dice se angolazione o postura sono cambiate
+function navelOffset(p) {
+  if (p.pose !== "front" || !POSES.front.pair || !p.align[2] || p.noThird) return null;
+  const T = POSES.front.targets, v = apply(fitSim(firstTwo(p), T), p.align[2]), d = dist(T[0], T[1]), c = mid(T[0], T[1]);
+  return [(v[0] - c[0]) / d, (v[1] - c[1]) / d];
+}
+
+// Retta ai minimi quadrati; margine = errore di una foto (o lo scarto dalla retta, se più grande)
+function trend(pts, noise) {
+  const n = pts.length;
+  if (n < 2) return null;
+  const mt = pts.reduce((s, q) => s + q.t, 0) / n, mv = pts.reduce((s, q) => s + q.v, 0) / n;
+  let sxx = 0, sxy = 0;
+  for (const q of pts) { sxx += (q.t - mt) ** 2; sxy += (q.t - mt) * (q.v - mv); }
+  if (!sxx || !mv) return null;
+  const slope = sxy / sxx, t0 = pts[0].t, t1 = pts[n - 1].t;
+  const start = mv + slope * (t0 - mt), end = mv + slope * (t1 - mt);
+  const resid = n >= 4 ? Math.sqrt(pts.reduce((s, q) => s + (q.v - (mv + slope * (q.t - mt))) ** 2, 0) / (n - 2)) / mv : 0;
+  const sigma = Math.max(noise, resid);
+  const se = sigma * (t1 - t0) / Math.sqrt(sxx);
+  const chg = (end - start) / mv;
+  const verdict = Math.abs(chg) > 2 * se ? "yes" : Math.abs(chg) > se ? "maybe" : "no";
+  return { start, end, chg, se, verdict, n };
+}
+
+function analyzePose(k) {
+  const photos = readyFor(k);
+  const zones = zonesFor(k, photos);
+  const rows = photos.map((p) => {
+    const z = zones.map((zone) => zoneStatsOf(p, zone.r));
+    const lit = z.filter((s) => s.cover > 0);
+    const w = lit.reduce((s, q) => s + q.cover, 0);
+    const light = lit.length ? ["mean", "lr", "tb"].reduce((o, key) => ({ ...o, [key]: lit.reduce((s, q) => s + q[key] * q.cover, 0) / w }), {}) : null;
+    return {
+      p, z, light, m: measures(p),
+      rot: Math.atan2(p.M.b, p.M.a) * 180 / Math.PI,
+      frame: dist(p.align[0], p.align[1]) / Math.hypot(p.proc.width, p.proc.height),
+      nav: navelOffset(p),
+      hand: p.lm?.length ? handSpot(p) : null,
+      covered: coveredZones(p, zones),
+    };
+  });
+
+  // Riferimento: la foto salvata come riferimento; se non c'è, con 3 foto o più la mediana
+  // (una foto storta non sposta niente), con 2 la prima
+  const refRow = rows.filter((r) => r.p.ref).sort((a, b) => byDate(a.p, b.p))[0];
+  const refOf = (get) => {
+    if (refRow && get(refRow) != null) return get(refRow);
+    const vals = rows.map(get).filter((v) => v != null);
+    return !vals.length ? null : rows.length >= 3 ? median(vals) : vals[0];
+  };
+  const ref = {
+    rot: refOf((r) => r.rot), frame: refOf((r) => r.frame),
+    navX: refOf((r) => r.nav?.[0]), navY: refOf((r) => r.nav?.[1]),
+    mean: refOf((r) => r.light?.mean), lr: refOf((r) => r.light?.lr), tb: refOf((r) => r.light?.tb),
+  };
+  rows.forEach((r, i) => {
+    r.geo = [];
+    r.lightFlags = [];
+    r.handFlags = r.hand === "belly" ? ["mano sulla pancia"] : r.hand === "chest" ? ["mano sul petto"] : [];
+    r.isRef = refRow ? r === refRow : rows.length === 2 && i === 0;
+    if (r.p.auto && !r.p.auto.sure) r.geo.push("punti automatici da controllare");
+    if (r.isRef) return;
+    const tilt = Math.abs(r.rot - ref.rot);
+    if (tilt > 10) r.geo.push(`storta di ${Math.round(tilt)}°`);
+    const fr = r.frame / ref.frame;
+    if (fr > 1.25) r.geo.push("più vicina allo specchio");
+    else if (fr < 1 / 1.25) r.geo.push("più lontana dallo specchio");
+    if (r.nav && ref.navY != null) {
+      if (Math.abs(r.nav[1] - ref.navY) > 0.2) r.geo.push("telefono a un'altra altezza o busto piegato");
+      if (Math.abs(r.nav[0] - ref.navX) > 0.2) r.geo.push("busto girato");
+    }
+    if (r.z.some((s) => s.cover < 0.9)) r.geo.push("busto tagliato fuori");
+    if (r.light && ref.mean) {
+      const b = r.light.mean / ref.mean;
+      if (b < 0.82) r.lightFlags.push("più scura");
+      else if (b > 1.22) r.lightFlags.push("più chiara");
+      if (Math.hypot(r.light.lr - ref.lr, r.light.tb - ref.tb) > 0.2) r.lightFlags.push("luce da un'altra parte");
+    }
+  });
+  rows.forEach((r) => {
+    const score = r.geo.length + (r.p.auto && !r.p.auto.sure ? 1 : 0) + r.lightFlags.length * 0.5;
+    r.level = r.isRef ? "ref" : score === 0 ? "good" : score < 2 ? "ok" : "bad";
+    r.auto = r.level !== "bad";
+    r.rank = r.geo.length * 2 + r.handFlags.length + r.lightFlags.length * 0.25 + (r.p.auto ? 1 - r.p.auto.conf : 0) - (r.isRef ? 100 : 0);
+  });
+  // Una foto per giorno: la più simile alle altre (o al riferimento) e senza mani davanti
+  const days = new Map();
+  rows.forEach((r) => { if (r.p.date) days.set(r.p.date, [...(days.get(r.p.date) || []), r]); });
+  for (const group of days.values()) {
+    if (group.length < 2) continue;
+    const best = group.reduce((a, b) => (b.rank < a.rank ? b : a));
+    group.forEach((r) => { if (r !== best) { r.dup = best; r.auto = false; } });
+  }
+  if (rows.filter((r) => r.auto).length < 2) rows.forEach((r) => { if (!r.dup) r.auto = true; });
+  rows.forEach((r) => { r.use = r.p.use ?? r.auto; });
+
+  const used = rows.filter((r) => r.use);
+  const hasDates = used.every((r) => r.p.date);
+  const day0 = hasDates && used.length ? new Date(used[0].p.date).getTime() : 0;
+  const tOf = (r, i) => hasDates ? (new Date(r.p.date).getTime() - day0) / 864e5 : i;
+  const measured = used.filter((r) => r.m);
+  const series = (get) => measured.map((r, i) => ({ r, i, v: get(r.m) })).filter((q) => q.v).map((q) => ({ t: tOf(q.r, q.i), v: q.v }));
+  const defRows = used.filter((r) => !r.lightFlags.length);
+  const trends = {
+    m: POSES[k].measures.map((id) => ({ id, tr: trend(series((m) => m.values[id]), NOISE.width) })).filter((x) => x.tr),
+    r: POSES[k].ratios.map((ratio) => ({ ratio, tr: trend(series((m) => m.ratios[ratio.id]), NOISE.ratio) })).filter((x) => x.tr),
+    def: zones.map((zone, j) => {
+      const pts = defRows.map((r) => ({ r, s: r.z[j] })).filter((q) => q.s.cover >= 0.9 && !q.r.covered.includes(j));
+      return { zone, tr: trend(pts.map((q, i) => ({ t: tOf(q.r, i), v: q.s.def })), NOISE.def) };
+    }),
+  };
+  const span = used.length >= 2 ? tOf(used[used.length - 1], used.length - 1) - tOf(used[0], 0) : 0;
+  const coveredOut = zones.map((zone, j) => ({ zone, n: defRows.filter((r) => r.covered.includes(j)).length })).filter((c) => c.n);
+  return { k, rows, used, zones, trends, hasDates, span, lightOut: used.length - defRows.length, measured: measured.length, coveredOut };
+}
+
+const spanText = (an) => {
+  if (!an.hasDates) return `${an.used.length} foto`;
+  const d = Math.round(an.span);
+  return d >= 60 ? `${Math.round(d / 30.4)} mesi` : d === 1 ? "1 giorno" : `${d} giorni`;
+};
+const VERDICT = { yes: ["Si vede", "green"], maybe: ["Forse", "yellow"], no: ["Non ancora", ""] };
+
+function metricRow(name, tr, an, ratio) {
+  const [label, cls] = VERDICT[tr.verdict];
+  const monthly = an.hasDates && an.span >= 28 ? ` · ${signed(tr.chg / an.span * 30.4 * 100)}% al mese` : "";
+  const val = ratio ? `${num(tr.start, 2)} → ${num(tr.end, 2)}` : `${signed(tr.chg * 100)}%`;
+  return `<div class="metric ${tr.verdict}"><div><div class="name">${esc(name)}</div>`
+    + `<div class="sub">margine ±${num(2 * tr.se * 100, tr.se > 0.05 ? 0 : 1)}%${monthly}</div></div>`
+    + `<div class="right"><span class="val">${val}</span><span class="pill ${cls}">${label}</span></div></div>`;
+}
+
+function renderAnalysis(an) {
+  const pose = POSES[an.k], names = (ids) => ids.map((id) => MEASURES[an.k][id].name.toLowerCase());
+  const box = $("#analysis");
+  const seen = [], maybe = [], still = [];
+  const say = (tr, phrases, name) => {
+    if (!tr) return;
+    const phrase = phrases[tr.chg > 0 ? 0 : 1];
+    if (tr.verdict === "yes") seen.push(phrase);
+    else if (tr.verdict === "maybe") maybe.push(phrase);
+    else still.push(name);
+  };
+  for (const { id, tr } of an.trends.m) say(tr, MEASURES[an.k][id].talk, MEASURES[an.k][id].name.toLowerCase());
+  for (const { zone, tr } of an.trends.def) say(tr, [`più definizione ${zone.where}`, `meno definizione ${zone.where}`], `definizione ${zone.where}`);
+
+  const join = (xs) => xs.length > 1 ? `${xs.slice(0, -1).join(", ")} e ${xs[xs.length - 1]}` : xs[0];
+  const cap = (s) => s[0].toUpperCase() + s.slice(1);
+  let lead = "";
+  if (seen.length) lead += `<b>${esc(cap(join(seen)))}.</b> `;
+  for (const { ratio, tr } of an.trends.r) if (tr.verdict === "yes") lead += `${esc(cap(ratio.talk[tr.chg > 0 ? 0 : 1]))}: ${esc(ratio.name.replace(/^[A-Z](?=[a-z])/, (c) => c.toLowerCase()))} da ${num(tr.start, 2)} a ${num(tr.end, 2)}. `;
+  if (maybe.length) lead += `Forse ${esc(join(maybe))}: ci vuole qualche foto in più per dirlo. `;
+  if (still.length && (seen.length || maybe.length)) lead += `Invariati: ${esc(join(still))}.`;
+  if (!seen.length && !maybe.length) lead = still.length
+    ? "Per ora niente supera il margine d'errore. Con poche settimane è normale: continua a fare le foto sempre uguali."
+    : "";
+
+  const cards = [];
+  for (const { id, tr } of an.trends.m) cards.push(metricRow(MEASURES[an.k][id].name, tr, an));
+  for (const { ratio, tr } of an.trends.r) cards.push(metricRow(ratio.name, tr, an, true));
+  for (const { zone, tr } of an.trends.def) if (tr) cards.push(metricRow(`Definizione ${zone.name.toLowerCase()}`, tr, an));
+
+  const notes = [];
+  const out = an.rows.filter((x) => !x.use);
+  const odd = out.filter((x) => !x.dup).length;
+  if (odd) notes.push(`${odd === 1 ? "1 foto esclusa" : `${odd} foto escluse`} perché troppo diverse dalle altre (sotto puoi rimetterle).`);
+  const ms = pose.measures;
+  const join2 = (xs) => xs.length > 1 ? `${xs.slice(0, -1).join(", ")} e ${xs[xs.length - 1]}` : xs[0];
+  if (ms.length && !an.measured) notes.push(`Per ${join2(names(ms))} servono le misure: in Prepara, scheda Misure, ${ms.length * 2} clic per foto.`);
+  else if (ms.length && an.measured < an.used.length) notes.push(`Misure fatte su ${an.measured} foto di ${an.used.length}.`);
+  if (settings.definition && !an.zones.length && an.k === "side") notes.push("Per la definizione di lato servono le misure di petto o pancia (dicono dov'è il busto).");
+  if (an.lightOut) notes.push(`${an.lightOut === 1 ? "1 foto ha" : `${an.lightOut} foto hanno`} una luce diversa: non conta per la definizione. Prova a sistemarla con Luce.`);
+  for (const { zone, n } of an.coveredOut) notes.push(`${n === 1 ? "In 1 foto" : `In ${n} foto`} una mano copre ${zone.name === "Addome" ? "l'addome" : `il ${zone.name.toLowerCase()}`}: lì non conta per la definizione.`);
+  const dups = an.rows.filter((x) => x.dup).length;
+  if (dups) notes.unshift(`Tengo una foto per giorno, la più simile alle altre: ${dups === 1 ? "1 doppione escluso" : `${dups} doppioni esclusi`}.`);
+  if (an.trends.def.some(({ tr }) => tr && tr.verdict !== "no" && tr.chg > 0)) notes.push("La definizione la gonfiano pump e luce dall'alto: meglio foto a freddo, sempre con la stessa luce.");
+
+  box.innerHTML = `<span class="section-title">Analisi</span>`
+    + `<div class="meta">${esc(pose.label)} · ${an.used.length} foto${out.length ? ` su ${an.rows.length}` : ""}${an.hasDates ? ` · ${spanText(an)}` : ""}</div>`
+    + (lead ? `<p class="lead">${lead}</p>` : "")
+    + (cards.length ? `<div class="metrics">${cards.join("")}</div>` : "")
+    + (notes.length ? `<ul class="caveats">${notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : "");
+}
+
+const LEVEL = { ref: ["Riferimento", "accent"], good: ["Buona", "green"], ok: ["Così così", "yellow"], bad: ["Da scartare", "red"] };
+function renderQuality(an) {
+  const box = $("#quality");
+  const items = an.rows.map((r) => {
+    const [label, cls] = r.dup && !r.p.use ? ["Doppione", ""] : LEVEL[r.level];
+    const why = [...r.geo, ...r.handFlags, ...r.lightFlags, ...(hasTweak(r.p) ? ["ritoccata a mano"] : [])];
+    const text = r.isRef ? (r.p.ref ? "Il tuo riferimento: le altre si confrontano con questa" : "Le altre si confrontano con questa")
+      : r.dup ? `Stesso giorno: tengo ${r.dup.p.name}${why.length ? ` (${why.join(", ")})` : ""}`
+      : why.length ? why.join(", ") : "In linea con le altre";
+    return `<li class="${r.use ? "" : "off"}"><div class="top"><span class="d">${esc(labelOf(r.p))}</span><span class="pill ${cls}">${label}</span></div>`
+      + `<label class="switch" title="Usa nell'analisi"><input type="checkbox" data-use="${esc(r.p.key)}" ${r.use ? "checked" : ""} aria-label="Usa ${esc(labelOf(r.p))} nell'analisi"></label>`
+      + `<div class="why">${esc(cap1(text))}</div></li>`;
+  }).join("");
+  box.innerHTML = `<span class="section-title">Foto</span><ul class="qlist">${items}</ul>`;
+  box.querySelectorAll("[data-use]").forEach((input) => input.addEventListener("change", () => {
+    const r = an.rows.find((x) => x.p.key === input.dataset.use);
+    r.p.use = input.checked === r.auto ? null : input.checked;
+    save(r.p);
+    refresh();
+  }));
+}
+const cap1 = (s) => s[0].toUpperCase() + s.slice(1);
+
+// Vista Differenze: dove la definizione è aumentata (verde) o diminuita (arancio) fra Prima e Dopo
+function drawDiff(ctx, A, B, an) {
+  ctx.save();
+  ctx.filter = "grayscale(1) brightness(0.5)";
+  drawAligned(ctx, B, 0);
+  ctx.restore();
+  ctx.filter = "none";
+  if (!an.zones.length) {
+    tag(ctx, "Differenze", "servono le misure del petto", 14, "left");
+    return;
+  }
+  const mA = mapsOf(A), mB = mapsOf(B);
+  const img = ctx.createImageData(CW, CH), d = img.data, F = 16;
+  for (const zone of an.zones) {
+    const [x0, y0, x1, y1] = zone.r.map(Math.round);
+    const base = zoneStats(mA, zone.r).def / 100 || 1;
+    for (let y = Math.max(0, y0 - F); y < Math.min(CH, y1 + F); y++) {
+      for (let x = Math.max(0, x0 - F); x < Math.min(CW, x1 + F); x++) {
+        const i = y * CW + x;
+        if (!mA.mask[i] || !mB.mask[i]) continue;
+        const inside = Math.min(x - x0 + F, x1 + F - x, y - y0 + F, y1 + F - y) / (2 * F);
+        const rel = (mB.smooth[i] - mA.smooth[i]) / base;
+        const a = Math.min(1, Math.max(0, (Math.abs(rel) - 0.2) / 0.6)) * Math.min(1, inside);
+        if (a * 170 <= d[i * 4 + 3]) continue;
+        const [cr, cg, cb] = rel > 0 ? [79, 209, 139] : [255, 162, 76];
+        d[i * 4] = cr; d[i * 4 + 1] = cg; d[i * 4 + 2] = cb; d[i * 4 + 3] = a * 170;
+      }
+    }
+  }
+  const layer = document.createElement("canvas");
+  layer.width = CW;
+  layer.height = CH;
+  layer.getContext("2d").putImageData(img, 0, 0);
+  ctx.drawImage(layer, 0, 0);
+
+  ctx.save();
+  ctx.setLineDash([5, 5]);
+  ctx.strokeStyle = "rgba(255,255,255,.45)";
+  ctx.font = "600 13px -apple-system, sans-serif";
+  ctx.textBaseline = "bottom";
+  for (const zone of an.zones) {
+    const [x0, y0, x1, y1] = zone.r;
+    ctx.strokeRect(x0 + .5, y0 + .5, x1 - x0, y1 - y0);
+    const a = zoneStats(mA, zone.r), b = zoneStats(mB, zone.r);
+    const text = a.def && b.def ? `${zone.name} ${signed((b.def / a.def - 1) * 100, 0)}%` : zone.name;
+    ctx.fillStyle = "rgba(14,14,16,.75)";
+    const w = ctx.measureText(text).width + 12;
+    ctx.fillRect(x0, y0 - 22, w, 20);
+    ctx.fillStyle = "#fff";
+    ctx.fillText(text, x0 + 6, y0 - 5);
+  }
+  ctx.restore();
+  tag(ctx, "Differenze", `${labelOf(A)} → ${labelOf(B)}`, 14, "left");
+
+  // legenda
+  ctx.save();
+  ctx.font = "500 13px -apple-system, sans-serif";
+  ctx.textBaseline = "middle";
+  const items = [["più definizione", "rgb(79,209,139)"], ["meno definizione", "rgb(255,162,76)"]];
+  let x = 14;
+  const y = CH - 26;
+  ctx.fillStyle = "rgba(14,14,16,.78)";
+  const total = items.reduce((s, [t]) => s + ctx.measureText(t).width + 30, 10);
+  ctx.beginPath();
+  ctx.roundRect(x, y - 15, total, 30, 15);
+  ctx.fill();
+  x += 12;
+  for (const [t, c] of items) {
+    ctx.fillStyle = c;
+    ctx.beginPath();
+    ctx.arc(x + 5, y, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#dcdce2";
+    ctx.fillText(t, x + 15, y + 1);
+    x += ctx.measureText(t).width + 30;
+  }
+  ctx.restore();
+}
+
+// ------------------------------------------------------------------ guida per la prossima foto
+
+const guideCanvas = $("#guideCanvas");
+const guidePoses = () => POSE_KEYS.filter((k) => state.photos.some((p) => p.pose === k));
+const fracWords = (v) => v < 0.28 ? "circa un quarto" : v < 0.38 ? "circa un terzo" : v < 0.46 ? "poco meno di metà" : v < 0.54 ? "circa metà"
+  : v < 0.62 ? "poco più di metà" : v < 0.72 ? "circa due terzi" : "circa tre quarti";
+
+// La foto più adatta a fare da riferimento: dritta, in linea con le altre, senza mani davanti
+function suggestRef(k) {
+  const rows = readyFor(k).length ? analyzePose(k).rows.filter((r) => !r.p.ref && r.p.lm?.length) : [];
+  const score = (r) => r.geo.length * 2 + r.handFlags.length * 1.5 + (r.p.auto && !r.p.auto.sure ? 3 : 0);
+  const best = rows.sort((a, b) => score(a) - score(b) || byDate(b.p, a.p))[0];
+  if (best) {
+    const why = [best.handFlags.length ? "" : "mani lontane da petto e pancia", best.geo.length ? "" : "dritta e alla stessa distanza delle altre"].filter(Boolean);
+    return { p: best.p, why: why.length ? cap1(why.join(", ")) : "La più simile alle altre" };
+  }
+  const any = state.photos.filter((p) => p.pose === k && !p.ref && p.lm?.length).sort((a, b) => (handSpot(a) ? 1 : 0) - (handSpot(b) ? 1 : 0))[0];
+  return any ? { p: any, why: "Allineala, così posso consigliarti meglio" } : null;
+}
+
+function drawGuide(p, title) {
+  const W = p.proc.width, H = p.proc.height, u = W / 600;
+  guideCanvas.width = W;
+  guideCanvas.height = H;
+  const ctx = guideCanvas.getContext("2d");
+  ctx.drawImage(p.proc, 0, 0);
+  ctx.fillStyle = "rgba(10,10,12,.45)";
+  ctx.fillRect(0, 0, W, H);
+  const sh = lmPair(p, "shoulders"), hp = lmPair(p, "hips"), f = framing(p);
+  const label = (text, x, y, color, align = "left") => {
+    ctx.font = `600 ${Math.round(15 * u)}px -apple-system, sans-serif`;
+    const w = ctx.measureText(text).width + 16 * u, h = 26 * u, left = align === "right" ? x - w : x;
+    ctx.fillStyle = "rgba(14,14,16,.82)";
+    ctx.beginPath();
+    ctx.roundRect(left, y - h / 2, w, h, h / 2);
+    ctx.fill();
+    ctx.fillStyle = color;
+    ctx.textBaseline = "middle";
+    ctx.fillText(text, left + 8 * u, y + 1);
+  };
+  const hline = (y, color) => {
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2 * u;
+    ctx.setLineDash([10 * u, 8 * u]);
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(W, y);
+    ctx.stroke();
+    ctx.restore();
+  };
+  if (sh) {
+    const sy = (sh[0][1] + sh[1][1]) / 2, sw = dist(sh[0], sh[1]);
+    const hy = hp ? (hp[0][1] + hp[1][1]) / 2 : sy + sw * 1.6;
+    hline(sy, "rgba(76,194,255,.9)");
+    ctx.save();
+    ctx.strokeStyle = "#4cc2ff";
+    ctx.lineWidth = 4 * u;
+    for (const [x] of sh) { ctx.beginPath(); ctx.moveTo(x, sy - 22 * u); ctx.lineTo(x, sy + 22 * u); ctx.stroke(); }
+    ctx.restore();
+    label(`Spalle · ${pctOf(sw / W)} della larghezza`, 12 * u, sy - 30 * u, "#4cc2ff");
+    if (f && f.yFrom !== "shoulders") {
+      const ny = f.y * H;
+      hline(ny, "rgba(255,255,255,.75)");
+      label(`${cap1(Y_LABEL[f.yFrom].replace(/^(i|la) /, ""))} · ${pctOf(f.y)} dall'alto`, 12 * u, ny + 22 * u, "#fff");
+    }
+    if (settings.framing === "full" && f?.feet) {
+      hline(f.feet * H, "rgba(79,209,139,.9)");
+      label(`Piedi · ${pctOf(f.feet)} dall'alto`, 12 * u, f.feet * H - 22 * u, "#4fd18b");
+    }
+    // Zona senza mani: dalla riga sotto il petto alle anche
+    const top = f?.yFrom === "nipples" ? f.y * H + sw * 0.15 : sy + (hy - sy) * 0.3;
+    ctx.save();
+    ctx.strokeStyle = "rgba(255,162,76,.95)";
+    ctx.fillStyle = "rgba(255,162,76,.10)";
+    ctx.lineWidth = 2 * u;
+    ctx.setLineDash([8 * u, 6 * u]);
+    ctx.beginPath();
+    ctx.roundRect(sh[0][0] + sw * 0.08, top, sw * 0.84, hy - top, 14 * u);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+    label("Mani fuori da qui", sh[0][0] + sw * 0.5 - 75 * u, top + 24 * u, "#ffa24c");
+  }
+  label(title, W - 12 * u, 26 * u, "#fff", "right");
+}
+
+function renderGuide() {
+  const poses = guidePoses();
+  if (!poses.includes(state.guidePose)) state.guidePose = poses[0];
+  const k = state.guidePose, ref = refFor(k), box = $("#guideInspector");
+  const poseSelect = poses.length > 1
+    ? `<div class="section"><label class="field"><span>Posa</span><select class="input" id="guidePose">${poses.map((q) => `<option value="${q}" ${q === k ? "selected" : ""}>${POSES[q].label}</option>`).join("")}</select></label></div>` : "";
+  const thumb = (p) => `<img alt="" src="${p.thumb}">`;
+
+  if (!ref) {
+    const sug = suggestRef(k);
+    if (sug) drawGuide(sug.p, "Proposta di riferimento");
+    $("#guideFrame").hidden = !sug;
+    box.innerHTML = poseSelect + `<div class="section"><span class="section-title">Riferimento</span>`
+      + `<p class="note">La foto da rifare uguale ogni volta. Resta salvata solo in questo browser, anche quando chiudi la pagina.</p>`
+      + (sug ? `<div class="suggest">${thumb(sug.p)}<div class="txt"><b>${esc(labelOf(sug.p))}</b><span class="sub">${esc(sug.why)}</span></div>`
+        + `<button class="btn primary" id="useSuggest">Usa questa</button></div>` : `<p class="note">Aggiungi qualche foto: ti propongo io la migliore.</p>`)
+      + `</div>`;
+    $("#useSuggest")?.addEventListener("click", () => setRef(sug.p, true));
+  } else {
+    drawGuide(ref, `Riferimento · ${labelOf(ref)}`);
+    $("#guideFrame").hidden = false;
+    const f = framing(ref);
+    const steps = [
+      "<b>Stesso posto</b>: stesso specchio, stessa ora del giorno.",
+      f && `<b>Distanza</b>: le spalle prendono ${fracWords(f.width)} della larghezza della foto (${pctOf(f.width)}).`,
+      f && f.yFrom !== "shoulders" && `<b>Altezza</b>: ${Y_LABEL[f.yFrom]} ${f.yFrom === "neck" ? "sta" : "stanno"} al ${pctOf(f.y)} dall'alto, ${fracWords(f.y)} della foto.`,
+      settings.framing === "full"
+        ? `<b>Inquadratura</b>: dalla testa ai piedi${f?.feet ? `, i piedi al ${pctOf(f.feet)} dall'alto` : ""}.`
+        : "<b>Inquadratura</b>: dalla testa ai fianchi, sempre uguale.",
+      "<b>Telefono</b>: davanti al viso, dritto, fotocamera 1× e griglia accesa. Foto vera, non screenshot.",
+      f?.hand ? `<b>Altra mano</b>: nel riferimento è sul${f.hand === "belly" ? "la pancia" : " petto"}. Meglio lungo il fianco: se cambi, scegli un nuovo riferimento.`
+        : "<b>Altra mano</b>: lungo il fianco, lontana da petto e pancia.",
+      "<b>Busto</b>: dritto verso lo specchio, spalle e pancia rilassate.",
+      "<b>Quando</b>: a freddo, non subito dopo l'allenamento.",
+    ].filter(Boolean);
+    const last = state.photos.filter((p) => p.pose === k && p !== ref && p.lm?.length).sort(byDate).pop();
+    const tips = last ? coachTips(last, ref) : null;
+    box.innerHTML = poseSelect
+      + `<div class="section"><span class="section-title">Riferimento</span><div class="suggest">${thumb(ref)}<div class="txt"><b>${esc(labelOf(ref))}</b><span class="sub">Salvata solo in questo browser</span></div>`
+      + `<button class="btn ghost" id="openRef">Apri</button></div></div>`
+      + `<div class="section"><span class="section-title">Come rifare la foto</span><ol class="steps-guide">${steps.map((t) => `<li>${t}</li>`).join("")}</ol>`
+      + `<button class="btn primary" id="guideDownload"><svg class="icon"><use href="#i-download"/></svg>Scarica la guida</button>`
+      + `<p class="note">Salvala sul telefono e guardala prima di scattare.</p></div>`
+      + (tips ? `<div class="section"><span class="section-title">Ultima foto · ${esc(labelOf(last))}</span><ul class="tips">`
+        + (tips.length ? tips.map((t) => `<li>${esc(t)}</li>`).join("") : '<li class="ok">Uguale al riferimento.</li>') + `</ul></div>` : "");
+    $("#openRef").addEventListener("click", () => { state.selected = ref; state.view = "prepare"; refresh(); });
+    $("#guideDownload").addEventListener("click", () => {
+      const a = document.createElement("a");
+      a.download = `guida-${k}.png`;
+      a.href = guideCanvas.toDataURL("image/png");
+      a.click();
+    });
+  }
+  $("#guidePose")?.addEventListener("change", (e) => { state.guidePose = e.target.value; refresh(); });
+}
+
+// ------------------------------------------------------------------ impostazioni
+
+const POSE_LABELS = { front: "Di fronte", side: "Di lato", back: "Di schiena" };
+const WHO_SUB = {
+  male: "Spalle, vita e V-taper",
+  female: "Spalle, vita, fianchi e rapporto vita/fianchi",
+  custom: "Misure neutre, scegli tu cosa tenere",
+};
+
+function openSettings(first = false) {
+  const dlg = $("#settingsDialog");
+  let draft = structuredClone(settings);
+  const aligned = state.photos.filter((p) => p.pose === "front" && p.align.length >= 2).length;
+  const radios = (name, options, value, subs) => `<div class="choice">${Object.entries(options).map(([k, o]) =>
+    `<label><input type="radio" name="${name}" value="${k}" ${k === value ? "checked" : ""}><b>${esc(o.label || o)}</b><span>${esc(subs ? subs[k] : o.sub)}</span></label>`).join("")}</div>`;
+  const render = () => {
+    const chips = POSE_KEYS_ALL.map((k) => `<div class="pose">${POSE_LABELS[k]}</div><div class="opts">${Object.entries(MEASURES[k]).map(([id, m]) => {
+      const off = m.full && draft.framing !== "full";
+      return `<label class="chip" ${off ? 'title="Solo con la figura intera"' : ""}><input type="checkbox" data-pose="${k}" data-id="${id}" ${draft.measures[k]?.includes(id) && !off ? "checked" : ""} ${off ? "disabled" : ""}><span>${esc(m.name)}</span></label>`;
+    }).join("")}</div>`).join("");
+    dlg.querySelector(".body").innerHTML = `
+      <fieldset><legend>Chi usa l'app</legend>${radios("who", WHO, draft.who, WHO_SUB)}</fieldset>
+      <fieldset><legend>Come fai le foto</legend>${radios("framing", FRAMINGS, draft.framing)}</fieldset>
+      <fieldset><legend>Punti per allineare le foto di fronte</legend>${radios("scheme", SCHEMES, draft.scheme)}
+        <p class="warn" id="schemeWarn" ${draft.scheme !== settings.scheme && aligned ? "" : "hidden"}>Cambiando i punti, le ${aligned} foto di fronte già allineate vanno riallineate: ne rifai una a mano, le altre le rifà l'automatico. Le misure restano.</p></fieldset>
+      <fieldset><legend>Cosa misurare <button type="button" class="link" id="presetBtn">Ripristina quelle consigliate</button></legend><div class="checks">${chips}</div></fieldset>
+      <fieldset><legend>Definizione</legend><label class="switch"><span>Stima la definizione muscolare<small>Ombre fra i muscoli di petto, addome e schiena. Spegnila se fai le foto con la maglietta.</small></span><input type="checkbox" id="defInput" ${draft.definition ? "checked" : ""}></label></fieldset>
+      <fieldset><legend>I tuoi progressi</legend>
+        <p class="note">Punti, misure e impostazioni stanno solo in questo browser. Salvali in un file per non perderli o per passarli su un altro dispositivo. Le foto non ci sono: quando apri il file, aggiungi di nuovo le foto e i punti tornano.${MOBILE ? " Su iPhone Safari cancella i dati dei siti che non apri da una settimana: aggiungi la pagina alla schermata Home o salva spesso." : ""}</p>
+        <label class="switch"><span>Includi le foto di riferimento<small>Il file pesa di più e contiene quelle foto.</small></span><input type="checkbox" id="withRefs" checked></label>
+        <div class="data-actions">
+          <button type="button" class="btn" id="exportBtn"><svg class="icon"><use href="#i-download"/></svg>Salva i progressi</button>
+          <button type="button" class="btn ghost" id="importBtn">Carica un file</button>
+        </div>
+        <p class="note">${esc(lastExportText())}</p>
+      </fieldset>`;
+    dlg.querySelectorAll('input[name="who"]').forEach((i) => i.addEventListener("change", () => {
+      draft.who = i.value;
+      draft.scheme = i.value === "male" ? "nipples" : "neckNavel";
+      draft.measures = presetMeasures(draft.who, draft.framing);
+      render();
+    }));
+    dlg.querySelectorAll('input[name="framing"]').forEach((i) => i.addEventListener("change", () => {
+      const preset = JSON.stringify(draft.measures) === JSON.stringify(presetMeasures(draft.who, draft.framing));
+      draft.framing = i.value;
+      if (preset) draft.measures = presetMeasures(draft.who, draft.framing);
+      render();
+    }));
+    dlg.querySelectorAll('input[name="scheme"]').forEach((i) => i.addEventListener("change", () => { draft.scheme = i.value; render(); }));
+    dlg.querySelectorAll("[data-pose]").forEach((i) => i.addEventListener("change", () => {
+      const list = new Set(draft.measures[i.dataset.pose] || []);
+      if (i.checked) list.add(i.dataset.id); else list.delete(i.dataset.id);
+      draft.measures[i.dataset.pose] = Object.keys(MEASURES[i.dataset.pose]).filter((id) => list.has(id));
+    }));
+    $("#presetBtn").addEventListener("click", () => { draft.measures = presetMeasures(draft.who, draft.framing); render(); });
+    $("#defInput").addEventListener("change", (e) => { draft.definition = e.target.checked; });
+    $("#exportBtn").addEventListener("click", async () => { await exportProgress($("#withRefs").checked); render(); });
+    // Un file caricato porta anche le sue impostazioni: la finestra si chiude senza applicare le scelte fatte qui
+    $("#importBtn").addEventListener("click", () => pickImport(() => { dlg.returnValue = ""; dlg.onclose = null; dlg.close(); }));
+  };
+  dlg.querySelector("h2").textContent = first ? "Prima di iniziare" : "Impostazioni";
+  dlg.querySelector(".intro").textContent = first
+    ? "Così misuro le cose giuste per te. Puoi cambiare tutto quando vuoi dalla rotella in alto."
+    : "Valgono per tutte le foto. Le foto e i punti già messi restano.";
+  $("#settingsCancel").hidden = first;
+  $("#settingsSave").textContent = first ? "Inizia" : "Salva";
+  render();
+  dlg.onclose = () => { if (dlg.returnValue === "save") applySettings(draft); };
+  dlg.returnValue = "";
+  dlg.showModal();
+}
+
+function applySettings(next) {
+  const schemeChanged = next.scheme !== settings.scheme;
+  settings = next;
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* spazio pieno */ }
+  buildPoses();
+  if (schemeChanged) {
+    state.photos.filter((p) => p.pose === "front").forEach((p) => {
+      p.align = []; p.noThird = false; p.auto = null; p.autoSkip = false; p.tweak = null;
+      save(p);
+    });
+    toast("Punti cambiati: allinea a mano una foto di fronte, le altre le faccio io");
+  }
+  mapCache.clear();
+  statsCache.clear();
+  refresh();
+  processQueue();
+}
+
+$("#settingsBtn").addEventListener("click", () => openSettings(false));
+$("#settingsCancel").addEventListener("click", () => $("#settingsDialog").close());
+
+// ------------------------------------------------------------------ salva e carica i progressi (file JSON)
+//
+// Nel file: impostazioni, punti, misure e ritocchi di ogni foto e, se vuoi, le foto di riferimento.
+// Le altre foto non ci sono: riaprendo il file si trascinano di nuovo e i punti tornano
+// (si ritrovano per nome e peso del file, o per data e ora di scatto).
+
+const LAST_EXPORT_KEY = "progressi.lastExport";
+const blobToDataURL = (b) => new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = reject; r.readAsDataURL(b); });
+const todayISO = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+const validKey = (k) => typeof k === "string" && k.startsWith("progressi:") && k !== SETTINGS_KEY && k.length < 400;
+const clampNum = (v, a, b) => typeof v === "number" && Number.isFinite(v) ? Math.max(a, Math.min(b, v)) : 0;
+const isPt = (q) => Array.isArray(q) && q.length >= 2 && q.slice(0, 3).every((v) => typeof v === "number" && Number.isFinite(v));
+
+function savedPhotoEntries() {
+  const out = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (!validKey(k)) continue;
+    try { out[k] = JSON.parse(localStorage.getItem(k)); } catch { /* rovinato */ }
+  }
+  return out;
+}
+
+async function exportProgress(withRefs) {
+  const photos = savedPhotoEntries();
+  let refs = [];
+  if (withRefs) {
+    try {
+      const all = (await idb("readonly", (st) => st.getAll())) || [];
+      refs = await Promise.all(all.map(async (r) => ({ key: r.key, name: r.name, date: r.date || "", stamp: r.stamp || "", image: await blobToDataURL(r.blob) })));
+    } catch { /* niente riferimenti */ }
+  }
+  const data = { app: "fitprogress", version: 1, exportedAt: new Date().toISOString(), settings, photos, refs };
+  const file = new File([JSON.stringify(data)], `fitprogress-${todayISO()}.json`, { type: "application/json" });
+  const n = Object.keys(photos).length;
+  // Sul telefono si apre il foglio di condivisione (Salva su File, AirDrop…); sul computer si scarica
+  if (MOBILE && navigator.canShare?.({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: "FitProgress" }); } catch (e) { if (e.name === "AbortError") return; }
+  } else {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(file);
+    a.download = file.name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  }
+  try { localStorage.setItem(LAST_EXPORT_KEY, String(Date.now())); } catch { /* spazio pieno */ }
+  toast(`Salvati i progressi di ${n === 1 ? "1 foto" : `${n} foto`}${refs.length ? ` e ${refs.length === 1 ? "1 riferimento" : `${refs.length} riferimenti`}` : ""}`);
+}
+
+// Tutto quello che arriva dal file si controlla: solo valori del tipo e nei limiti attesi
+function cleanSettings(v) {
+  const d = defaultSettings();
+  if (!v || typeof v !== "object") return d;
+  const measures = {};
+  for (const k of POSE_KEYS_ALL) measures[k] = Array.isArray(v.measures?.[k]) ? Object.keys(MEASURES[k]).filter((id) => v.measures[k].includes(id)) : d.measures[k];
+  return {
+    who: WHO[v.who] ? v.who : d.who, framing: FRAMINGS[v.framing] ? v.framing : d.framing,
+    scheme: SCHEMES[v.scheme] ? v.scheme : d.scheme, measures, definition: v.definition !== false,
+  };
+}
+function cleanPhoto(v) {
+  if (!v || typeof v !== "object") return null;
+  const pts = (a, max) => Array.isArray(a) ? a.filter(isPt).slice(0, max).map((q) => q.slice(0, 3)) : [];
+  const meas = {};
+  if (v.meas && typeof v.meas === "object") {
+    for (const [id, a] of Object.entries(v.meas)) if (/^[a-z]{2,12}$/.test(id) && pts(a, 2).length) meas[id] = pts(a, 2);
+  }
+  const out = {
+    date: validDate(v.date) ? v.date : "", pose: POSE_KEYS_ALL.includes(v.pose) ? v.pose : "front",
+    flip: v.flip === true, bright: clampNum(v.bright, -50, 50), contrast: clampNum(v.contrast, -50, 50),
+    align: pts(v.align, 3), meas, noThird: v.noThird === true,
+    use: typeof v.use === "boolean" ? v.use : null,
+    auto: v.auto && typeof v.auto === "object" ? { conf: clampNum(v.auto.conf, 0, 1), sure: v.auto.sure === true } : null,
+    lm: Array.isArray(v.lm) ? pts(v.lm, 33) : null,
+    tweak: v.tweak && typeof v.tweak === "object" ? { s: clampNum(v.tweak.s, -15, 15), r: clampNum(v.tweak.r, -10, 10), x: clampNum(v.tweak.x, -40, 40), y: clampNum(v.tweak.y, -40, 40) } : null,
+    scheme: SCHEMES[v.scheme] ? v.scheme : "nipples",
+    stamp: typeof v.stamp === "string" && /^20\d\d:\d\d:\d\d \d\d:\d\d:\d\d$/.test(v.stamp) ? v.stamp : "",
+  };
+  if (Array.isArray(v.dims) && v.dims.length === 2 && v.dims.every((n) => typeof n === "number" && n > 0 && n < 20000)) out.dims = v.dims;
+  if (!Object.keys(meas).length && Array.isArray(v.measure)) out.measure = pts(v.measure, 4); // formato vecchio
+  return out;
+}
+
+async function importProgress(file) {
+  let data = null;
+  try { data = JSON.parse(await file.text()); } catch { /* non è JSON */ }
+  if (!["fitprogress", "progressi"].includes(data?.app) || !data.photos || typeof data.photos !== "object") {
+    toast("Questo file non è un salvataggio di FitProgress");
+    return false;
+  }
+  settings = cleanSettings(data.settings);
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* spazio pieno */ }
+  buildPoses();
+  let n = 0;
+  for (const [k, v] of Object.entries(data.photos)) {
+    const c = cleanPhoto(v);
+    if (!c || !validKey(k)) continue;
+    try { localStorage.setItem(k, JSON.stringify(c)); n++; } catch { /* spazio pieno */ }
+  }
+  // Riferimenti: quelli del file prendono il posto di quelli di questo browser
+  const refs = (Array.isArray(data.refs) ? data.refs : []).filter((r) => validKey(r?.key) && typeof r.image === "string" && /^data:image\/(jpeg|png|webp);base64,/.test(r.image)).slice(0, MAX_REFS);
+  if (refs.length) {
+    try {
+      await idb("readwrite", (st) => st.clear());
+      for (const r of refs) {
+        const blob = await (await fetch(r.image)).blob();
+        await idb("readwrite", (st) => st.put({ key: r.key, name: String(r.name || "riferimento").slice(0, 200), date: validDate(r.date) ? r.date : "", stamp: typeof r.stamp === "string" ? r.stamp.slice(0, 19) : "", blob, savedAt: Date.now() }));
+      }
+    } catch { toast("Non riesco a salvare i riferimenti in questo browser"); }
+  }
+  // Le foto già aperte riprendono i dati del file
+  const open = state.photos, selectedKey = state.selected?.key;
+  state.photos = [];
+  state.refKeys = new Set();
+  try { for (const r of (await idb("readonly", (st) => st.getAll())) || []) state.refKeys.add(r.key); } catch { /* niente */ }
+  for (const p of open) {
+    p.proc?.close?.();
+    state.photos.push(await makePhoto(p.key, p.name, p.baseBlob, p.date, p.stamp));
+  }
+  state.selected = state.photos.find((q) => q.key === selectedKey) || state.photos[0] || null;
+  mapCache.clear();
+  statsCache.clear();
+  await loadRefs();
+  refresh();
+  processQueue();
+  toast(`Caricati i progressi di ${n === 1 ? "1 foto" : `${n} foto`}${refs.length ? ` e ${refs.length === 1 ? "1 riferimento" : `${refs.length} riferimenti`}` : ""}.${state.photos.length ? "" : " Ora trascina le foto: i punti tornano da soli."}`);
+  return true;
+}
+
+let afterImport = null;
+$("#importInput").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  const ok = await importProgress(file);
+  if (ok) afterImport?.();
+  afterImport = null;
+});
+const pickImport = (then) => { afterImport = then; $("#importInput").click(); };
+$("#importLink").addEventListener("click", () => pickImport(null));
+
+function lastExportText() {
+  const t = +localStorage.getItem(LAST_EXPORT_KEY);
+  if (!t) return "Non hai ancora salvato i progressi in un file.";
+  const days = Math.floor((Date.now() - t) / 864e5);
+  return `Ultimo salvataggio: ${days === 0 ? "oggi" : days === 1 ? "ieri" : `${days} giorni fa`}.`;
+}
+
+// ------------------------------------------------------------------ come fare le foto
+
+const FIG = {
+  front: '<svg viewBox="0 0 44 64" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="22" cy="8" r="5"/><path d="M14 17h16l2 22H12z"/><path d="M14 18l-5 18M30 18l5 18M17 39l-2 22M27 39l2 22"/></svg>',
+  side: '<svg viewBox="0 0 44 64" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="22" cy="8" r="5"/><path d="M18 17h8l2 22h-11z"/><path d="M24 18l6 16M20 39l-1 22M25 39l1 22"/></svg>',
+  back: '<svg viewBox="0 0 44 64" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="22" cy="8" r="5"/><path d="M14 17h16l2 22H12z"/><path d="M22 18v20M14 18l-5 18M30 18l5 18M17 39l-2 22M27 39l2 22"/></svg>',
+};
+function renderTips() {
+  const full = settings.framing === "full", who = settings.who;
+  const clothes = { male: "Stessi boxer o costume ogni volta.", female: "Stesso intimo o costume, oppure reggiseno sportivo e pantaloncini sempre uguali.", custom: "Stessi vestiti ogni volta, aderenti." }[who];
+  const li = (xs) => `<ul>${xs.filter(Boolean).map((x) => `<li>${x}</li>`).join("")}</ul>`;
+  $("#tipsDialog .body").innerHTML = `
+    <section><h3>Quando</h3>${li([
+      "Ogni 1 o 2 settimane, sempre lo stesso giorno. Ogni giorno è troppo spesso: i cambi veri sono più piccoli delle differenze fra una foto e l'altra.",
+      "Al mattino, dopo il bagno e prima di colazione.",
+      "Mai subito dopo l'allenamento: il pump gonfia i muscoli per qualche ora.",
+      "Se la sera prima hai mangiato molto salato o bevuto alcol, rimanda di un giorno: l'acqua trattenuta cambia vita e definizione.",
+      who !== "male" && "Se hai il ciclo, scatta sempre nella stessa fase (per esempio la settimana dopo): la ritenzione d'acqua cambia molto vita e pancia.",
+    ])}</section>
+    <section><h3>Dove e con che luce</h3>${li([
+      "Stesso specchio e stesso punto: segna dove metti i piedi con un pezzo di nastro adesivo.",
+      "Luce davanti a te e sempre uguale, per esempio la stessa lampada accesa. Evita la luce solo dall'alto o alle spalle: cambia le ombre e quindi la definizione.",
+      clothes,
+    ])}</section>
+    <section><h3>Il telefono</h3>${li([
+      "Fotocamera principale a 1×: niente 0,5×, zoom, modalità ritratto o filtri.",
+      full ? "Figura intera: telefono all'altezza dell'ombelico, dritto, con testa e piedi dentro la foto. Se lo specchio è piccolo, appoggia il telefono e usa il timer."
+        : "Busto: telefono all'altezza del petto, dritto, davanti al viso. Dentro la foto dalla testa ai fianchi.",
+      "Accendi la griglia della fotocamera (su iPhone: Impostazioni › Fotocamera › Griglia) e tieni le linee dritte.",
+      "Usa la foto originale, non uno screenshot: perde qualità e la data di scatto.",
+    ])}</section>
+    <section><h3>Le pose</h3><div class="poses">
+      <div class="pose-card">${FIG.front}<b>Di fronte</b>${li([
+        "Piedi alla larghezza delle anche, peso su tutti e due.",
+        "Braccio libero lungo il fianco, staccato di un palmo: deve vedersi la vita.",
+        "Spalle giù e rilassate. Pancia normale: né trattenuta né spinta fuori.",
+        "Busto dritto verso lo specchio.",
+      ])}</div>
+      <div class="pose-card">${FIG.side}<b>Di lato</b>${li([
+        "Girati di 90°, sempre dallo stesso lato.",
+        "Il braccio verso lo specchio un po' in avanti, così non copre pancia e schiena.",
+        "Stessa postura della foto di fronte, sguardo avanti.",
+      ])}</div>
+      <div class="pose-card">${FIG.back}<b>Di schiena</b>${li([
+        "Allo specchio non ti vedi: appoggia il telefono a 2 metri, all'altezza del petto, e usa il timer.",
+        "Braccia lungo i fianchi, rilassate, sempre uguali.",
+        "Piedi nello stesso punto segnato col nastro.",
+      ])}</div>
+    </div></section>
+    <section><h3>Rilassato, sempre</h3>${li([
+      "Confronta solo foto rilassate. Se vuoi anche una foto contratta, scattala dopo e non usarla per il confronto.",
+      "Prima di scattare, fai un respiro e lascia andare: niente pancia in dentro.",
+    ])}</section>
+    <p class="save">Nella scheda <b>Guida foto</b> trovi il tuo riferimento con le misure precise: quanto spazio occupano le spalle e a che altezza stanno nella foto.</p>`;
+}
+function openTips() {
+  renderTips();
+  $("#tipsDialog").showModal();
+}
+$("#tipsBtn").addEventListener("click", openTips);
+$("#tipsLink").addEventListener("click", openTips);
+
+// ------------------------------------------------------------------ viste
+
+function refresh() {
+  computeTransforms();
+  const has = state.photos.length > 0;
+  const canCompare = POSE_KEYS.some((k) => readyFor(k).length >= 2);
+  if (!canCompare && state.view === "compare") state.view = "prepare";
+  if (state.selected && state.mode === "measure" && !state.selected.M) state.mode = "align";
+
+  $("#layout").classList.toggle("is-empty", !has);
+  $("#emptyView").hidden = has;
+  $("#editFrame").hidden = !has || state.view !== "prepare";
+  $("#compareFrame").hidden = !has || state.view !== "compare";
+  $("#guideFrame").hidden = !has || state.view !== "guide";
+  $("#prepareInspector").hidden = state.view !== "prepare";
+  $("#compareInspector").hidden = state.view !== "compare";
+  $("#guideInspector").hidden = state.view !== "guide";
+  $("#tabPrepare").setAttribute("aria-selected", state.view === "prepare");
+  $("#tabCompare").setAttribute("aria-selected", state.view === "compare");
+  $("#tabGuide").setAttribute("aria-selected", state.view === "guide");
+  $("#tabGuide").disabled = !has;
+  $("#tabCompare").disabled = !canCompare;
+  $("#tabCompare").title = canCompare ? "" : "Allinea almeno 2 foto della stessa posa";
+  loupe.hidden = true;
+
+  renderSidebar();
+  if (!has) return;
+  if (state.view === "prepare") {
+    updatePrepare();
+    drawEditor();
+  } else if (state.view === "guide") {
+    renderGuide();
+  } else {
+    fillCompareControls();
+    fillTweak();
+    state.analysis = analyzePose(state.comparePose);
+    drawCompare();
+    renderAnalysis(state.analysis);
+    renderQuality(state.analysis);
+    renderResults(state.analysis);
+  }
+}
+
+$("#tabPrepare").addEventListener("click", () => { state.view = "prepare"; refresh(); });
+$("#tabCompare").addEventListener("click", () => { state.view = "compare"; refresh(); });
+$("#tabGuide").addEventListener("click", () => { state.view = "guide"; refresh(); });
+for (const id of ["#addBtn", "#addBtn2"]) $(id).addEventListener("click", () => $("#fileInput").click());
+$("#fileInput").addEventListener("change", (e) => { addFiles([...e.target.files]); e.target.value = ""; });
+
+let dragDepth = 0;
+window.addEventListener("dragenter", (e) => { e.preventDefault(); dragDepth++; document.body.classList.add("dragging"); });
+window.addEventListener("dragleave", () => { if (--dragDepth <= 0) { dragDepth = 0; document.body.classList.remove("dragging"); } });
+window.addEventListener("dragover", (e) => e.preventDefault());
+window.addEventListener("drop", (e) => {
+  e.preventDefault();
+  dragDepth = 0;
+  document.body.classList.remove("dragging");
+  addFiles([...e.dataTransfer.files]);
+});
+
+refresh();
+loadRefs().then(() => { refresh(); processQueue(); });
+if (!settingsSaved) openSettings(true);
+</script>
+</body>
+</html>

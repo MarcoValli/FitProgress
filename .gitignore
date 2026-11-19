@@ -1,0 +1,14 @@
+# Foto e salvataggi personali: non vanno nel repository
+*.jpg
+*.jpeg
+*.png
+*.heic
+*.HEIC
+*.heif
+*.JPG
+*.JPEG
+*.PNG
+*.json
+gym/
+
+.DS_Store
