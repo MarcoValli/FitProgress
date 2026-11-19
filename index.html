@@ -133,10 +133,10 @@
   .remove:hover { color: var(--danger); }
   @media (hover: none) { .remove { opacity: 1; } }
 
-  .canvas-area { position: relative; min-width: 0; overflow: auto; display: flex; align-items: center; justify-content: center; padding: 24px; background: radial-gradient(circle at 50% 0%, #17171c, var(--bg) 70%); }
+  .canvas-area { position: relative; min-width: 0; overflow: auto; display: flex; flex-direction: column; gap: 12px; align-items: center; justify-content: center; padding: 24px; background: radial-gradient(circle at 50% 0%, #17171c, var(--bg) 70%); }
   .frame { position: relative; display: inline-block; line-height: 0; border-radius: 8px; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,.5), 0 0 0 1px var(--border); }
   #editCanvas { display: block; max-width: 100%; max-height: calc(100vh - 56px - 48px); cursor: crosshair; touch-action: none; }
-  #compareCanvas { display: block; max-width: 100%; max-height: calc(100vh - 56px - 48px); touch-action: pan-y; }
+  #compareCanvas { display: block; max-width: 100%; max-height: calc(100vh - 56px - 48px - 180px); touch-action: pan-y; }
   #compareCanvas.wipe { touch-action: none; }
   #compareCanvas.wipe { cursor: ew-resize; }
   .coach { position: absolute; z-index: 2; left: 50%; top: 12px; transform: translateX(-50%); max-width: calc(100% - 24px); padding: 8px 14px; border-radius: 999px; background: rgba(14, 14, 16, .82); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.1); line-height: 1.35; font-size: 13px; text-align: center; pointer-events: none; }
@@ -184,6 +184,58 @@
   .steps.align { --c: var(--align); }
   .steps.measure { --c: var(--measure); }
   .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  /* ---------- fisarmoniche: chiuse mostrano lo stato a destra ---------- */
+  .acc { border-bottom: 1px solid var(--border); }
+  .acc > summary { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 10px 16px; cursor: pointer; list-style: none; }
+  .acc > summary::-webkit-details-marker { display: none; }
+  .acc > summary:hover { background: rgba(255,255,255,.02); }
+  .acc-title { font-weight: 600; flex-shrink: 0; }
+  .acc-sum { margin-left: auto; min-width: 0; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
+  .acc-chev { color: var(--faint); transition: transform .15s; }
+  .acc[open] > summary .acc-chev { transform: rotate(180deg); }
+  .acc-body { padding: 2px 16px 16px; display: grid; gap: 12px; }
+  .ph-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  .ph-txt { flex: 1; min-width: 0; }
+  #refBtn[aria-pressed="true"] { color: #ffd166; background: transparent; border-color: transparent; }
+  #refBtn[aria-pressed="true"] svg { fill: currentColor; }
+
+  /* ---------- confronto: foto Prima e Dopo, vista ---------- */
+  .cmpbar { width: 100%; max-width: 600px; display: grid; gap: 10px; }
+  .cmp-pick { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 6px; }
+  .cmp-slot { display: flex; align-items: center; gap: 10px; min-height: 64px; padding: 6px 10px 6px 6px; border-radius: 12px; border: 1px solid var(--border-strong); background: var(--raised); text-align: left; cursor: pointer; min-width: 0; }
+  .cmp-slot:hover { background: var(--hover); }
+  .cmp-slot:active { transform: scale(.98); }
+  .cmp-slot img { width: 40px; height: 52px; border-radius: 7px; object-fit: cover; background: #000; flex-shrink: 0; }
+  .cmp-slot img:not([src]), .cmp-slot img[src=""] { visibility: hidden; }
+  .cmp-slot .txt { display: grid; min-width: 0; flex: 1; }
+  .cmp-slot small { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+  .cmp-slot b { font-size: 14px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .cmp-slot .chev { color: var(--faint); }
+  .cmp-tools { display: flex; align-items: center; gap: 4px; }
+  .cmp-tools .slider { flex: 1; }
+  #guidesBtn[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); }
+
+  /* ---------- cassetto delle foto ---------- */
+  .sheet { width: min(560px, calc(100vw - 32px)); max-height: min(80vh, 720px); padding: 0; border: 1px solid var(--border-strong); border-radius: 16px; background: var(--panel); color: var(--text); box-shadow: 0 24px 70px rgba(0,0,0,.65); overflow: hidden; }
+  .sheet[open] { display: flex; flex-direction: column; }
+  .sheet::backdrop { background: rgba(0,0,0,.6); }
+  .sheet-grab { display: none; }
+  .sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 14px 12px 10px 18px; }
+  .sheet-head h2 { margin: 0; font-size: 16px; }
+  .sheet-tabs { margin: 0 14px 10px; }
+  .sheet-tabs button small { color: var(--faint); margin-left: 4px; }
+  .sheet-body { overflow-y: auto; padding: 0 14px 18px; overscroll-behavior: contain; }
+  .sheet-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px; padding: 3px; }
+  .sheet-item { position: relative; display: grid; gap: 6px; padding: 0; border: 0; background: none; text-align: left; cursor: pointer; }
+  .sheet-item img { width: 100%; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 10px; background: #000; box-shadow: 0 0 0 1px var(--border); }
+  .sheet-item[aria-pressed="true"] img { box-shadow: 0 0 0 3px var(--accent); }
+  .sheet-item:active img { transform: scale(.97); }
+  .sheet-date { font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums; padding-left: 2px; }
+  .sheet-tag { position: absolute; top: 6px; left: 6px; padding: 2px 7px; border-radius: 9px; background: rgba(14,14,16,.82); color: var(--muted); font-size: 11px; font-weight: 600; }
+  .sheet-tag.on { background: var(--accent); color: #fff; }
+  .sheet-ref { position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; border-radius: 11px; display: grid; place-items: center; background: rgba(14,14,16,.82); color: #ffd166; }
+  .sheet-ref svg { width: 12px; height: 12px; fill: currentColor; }
 
   .note { color: var(--muted); font-size: 12px; line-height: 1.5; }
   .results table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
@@ -323,9 +375,13 @@
   @media (max-width: 860px) {
     html, body { height: auto; }
     body { min-height: 100dvh; }
-    .topbar { position: sticky; top: 0; z-index: 5; height: auto; flex-wrap: wrap; gap: 8px; padding: max(8px, env(safe-area-inset-top)) 12px 8px; }
-    .topbar nav { order: 3; display: flex; width: 100%; }
-    .topbar nav button { flex: 1; padding: 0 4px; white-space: nowrap; }
+    body { padding-bottom: calc(62px + env(safe-area-inset-bottom)); }
+    .topbar { position: sticky; top: 0; z-index: 5; height: auto; gap: 8px; padding: max(8px, env(safe-area-inset-top)) 12px 8px; }
+    /* Le sezioni diventano la barra in basso, a portata di pollice */
+    .topbar nav.tabs { position: fixed; z-index: 20; left: 0; right: 0; bottom: 0; display: flex; gap: 0; padding: 4px 6px max(4px, env(safe-area-inset-bottom)); border: 0; border-top: 1px solid var(--border); border-radius: 0; background: rgba(21, 21, 24, .96); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+    .topbar nav.tabs button { flex: 1; height: 54px; flex-direction: column; gap: 3px; padding: 0 2px; border-radius: 10px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+    .topbar nav.tabs button svg { display: block; width: 22px; height: 22px; }
+    .topbar nav.tabs button[aria-selected="true"] { background: transparent; box-shadow: none; color: var(--accent); }
     .topbar .lbl { display: none; }
     #addBtn, #tipsBtn { width: 36px; padding: 0; }
     .brand { font-size: 14px; }
@@ -340,11 +396,22 @@
     .item .pill { font-size: 10px; height: 16px; padding: 0 5px; }
     .remove { top: 8px; right: 8px; opacity: 1; background: rgba(14,14,16,.75); }
     .canvas-area { padding: 10px; overflow: visible; flex-direction: column; gap: 8px; }
-    #compareCanvas, #guideCanvas { max-height: 62dvh; }
-    /* Foto e pulsanti nello schermo insieme, senza scorrere: sopra ci sono la barra e le miniature */
-    /* Suggerimento, foto e pulsanti nello schermo insieme, senza scorrere (sopra ci sono la barra e le miniature).
+    #guideCanvas { max-height: 62dvh; }
+    /* Confronto: niente miniature sopra (le foto si scelgono dal cassetto); foto e comandi insieme nello schermo */
+    .layout[data-view="compare"] .sidebar, .layout[data-view="guide"] .sidebar { display: none; }
+    #compareCanvas { max-height: max(280px, calc(100dvh - 330px)); }
+    .cmpbar { max-width: 520px; }
+    .cmp-slot { min-height: 60px; }
+    .cmp-tools .btn { width: 44px; height: 44px; }
+    /* Il cassetto sale dal basso */
+    .sheet { width: 100%; max-width: 100%; margin: auto 0 0; border: 0; border-radius: 18px 18px 0 0; max-height: 82dvh; padding-bottom: env(safe-area-inset-bottom); }
+    .sheet[open] { animation: sheet-up .22s ease-out; }
+    .sheet-grab { display: block; width: 38px; height: 5px; border-radius: 3px; background: var(--border-strong); margin: 8px auto 0; }
+    .sheet-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    /* Suggerimento, foto e pulsanti nello schermo insieme, senza scorrere (sopra la barra e le miniature, sotto le sezioni).
        Il suggerimento sta sopra la foto, non sopra il busto */
-    #editCanvas { max-height: max(260px, calc(100dvh - 380px)); }
+    #editCanvas { max-height: max(260px, calc(100dvh - 400px)); }
+    .acc > summary { min-height: 52px; }
     /* Altezza fissa: se il testo cambia, la foto non si sposta sotto il dito */
     .coach { position: static; transform: none; width: 100%; max-width: 520px; border-radius: 12px; height: 64px; display: flex; align-items: center; justify-content: center; overflow: hidden; font-size: 12.5px; }
     .coach[hidden] { display: none; }
@@ -355,7 +422,7 @@
     .item { width: 84px; }
     .item img { width: 64px; height: 84px; }
     .item .pill { white-space: nowrap; max-width: 74px; overflow: hidden; text-overflow: ellipsis; display: block; line-height: 16px; }
-    .toast { top: calc(max(8px, env(safe-area-inset-top)) + 96px); bottom: auto !important; transform: translate(-50%, -12px); }
+    .toast { top: calc(max(8px, env(safe-area-inset-top)) + 56px); bottom: auto !important; transform: translate(-50%, -12px); }
     .pick-opt { min-height: 76px; }
     .steps li { padding: 9px 8px; }
     .actions .btn { height: 40px; }
@@ -378,6 +445,14 @@
 
   }
 
+  @keyframes sheet-up { from { transform: translateY(40px); opacity: .4; } to { transform: none; opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .sheet[open] { animation: none; } }
+  .tabs button { display: inline-flex; align-items: center; justify-content: center; }
+  .tabs button svg { display: none; }
+  .dialog .body.accs { gap: 0; padding: 0 0 8px; align-content: start; }
+  .dialog .body.accs .acc > summary { padding: 12px 22px; }
+  .dialog .body.accs .acc-body { padding: 2px 22px 18px; }
+
   body.dragging::after { content: "Rilascia le foto"; position: fixed; inset: 0; display: grid; place-items: center; font-size: 20px; font-weight: 600; background: rgba(79, 140, 255, .1); border: 2px dashed var(--accent); pointer-events: none; z-index: 10; }
 </style>
 </head>
@@ -395,15 +470,22 @@
   <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></symbol>
   <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
   <symbol id="i-logo" viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></symbol>
+  <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.5"/><path d="M12 1v3M12 20v3M1 12h3M20 12h3"/></symbol>
+  <symbol id="i-split" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M12 2v20"/><path d="m8 10-2 2 2 2M16 10l2 2-2 2"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h11"/><path d="M9 8h6"/></symbol>
+  <symbol id="i-swap" viewBox="0 0 24 24"><path d="M7 4 3 8l4 4"/><path d="M3 8h14"/><path d="m17 20 4-4-4-4"/><path d="M21 16H7"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></symbol>
 </svg>
 
 <header class="topbar">
   <div class="brand"><span class="brand-mark"><svg class="icon"><use href="#i-logo"/></svg></span>FitProgress</div>
-  <nav class="segmented" role="tablist" aria-label="Sezione">
-    <button role="tab" id="tabPrepare" aria-selected="true">Prepara</button>
-    <button role="tab" id="tabCompare" aria-selected="false" disabled>Confronta</button>
-    <button role="tab" id="tabGuide" aria-selected="false" disabled>Guida foto</button>
-    <button role="tab" id="tabLog" aria-selected="false" title="Peso e misure col metro">Diario</button>
+  <!-- Sul telefono diventa la barra in basso -->
+  <nav class="segmented tabs" role="tablist" aria-label="Sezione">
+    <button role="tab" id="tabPrepare" aria-selected="true"><svg class="icon"><use href="#i-target"/></svg><span>Prepara</span></button>
+    <button role="tab" id="tabCompare" aria-selected="false" disabled><svg class="icon"><use href="#i-split"/></svg><span>Confronta</span></button>
+    <button role="tab" id="tabGuide" aria-selected="false" disabled><svg class="icon"><use href="#i-camera"/></svg><span>Guida</span></button>
+    <button role="tab" id="tabLog" aria-selected="false" title="Peso e misure col metro"><svg class="icon"><use href="#i-book"/></svg><span>Diario</span></button>
   </nav>
   <div class="spacer"></div>
   <button class="btn ghost" id="tipsBtn" title="Come fare le foto"><svg class="icon"><use href="#i-camera"/></svg><span class="lbl">Come fare le foto</span></button>
@@ -446,99 +528,123 @@
     </div>
 
     <div class="frame" id="compareFrame" hidden><canvas id="compareCanvas"></canvas></div>
+    <!-- Sotto il confronto: quali foto, come vederle -->
+    <div class="cmpbar" id="compareBar" hidden>
+      <div class="cmp-pick">
+        <button type="button" class="cmp-slot" data-slot="A" aria-haspopup="dialog"><img alt=""><span class="txt"><small>Prima</small><b></b></span><svg class="icon chev"><use href="#i-chev"/></svg></button>
+        <button type="button" class="btn ghost icon-only cmp-swap" id="swapBtn" aria-label="Scambia prima e dopo" title="Scambia"><svg class="icon"><use href="#i-swap"/></svg></button>
+        <button type="button" class="cmp-slot" data-slot="B" aria-haspopup="dialog"><img alt=""><span class="txt"><small>Dopo</small><b></b></span><svg class="icon chev"><use href="#i-chev"/></svg></button>
+      </div>
+      <div class="segmented full" role="group" aria-label="Vista">
+        <button data-cmode="wipe" aria-pressed="true">Cursore</button>
+        <button data-cmode="side" aria-pressed="false">Affiancate</button>
+        <button data-cmode="fade" aria-pressed="false">Sfumate</button>
+        <button data-cmode="diff" aria-pressed="false" title="Dove è cambiata la definizione">Differenze</button>
+      </div>
+      <div class="cmp-tools">
+        <label class="slider" id="valueGroup"><span id="valueLabel">Cursore</span><input type="range" id="valueInput" min="0" max="100" value="50"><output id="valueOut">50%</output></label>
+        <button type="button" class="btn ghost icon-only" id="guidesBtn" aria-pressed="false" aria-label="Linee guida" title="Linee guida"><svg class="icon"><use href="#i-grid"/></svg></button>
+        <button type="button" class="btn ghost icon-only" id="downloadBtn" aria-label="Scarica immagine" title="Scarica immagine"><svg class="icon"><use href="#i-download"/></svg></button>
+      </div>
+    </div>
     <div class="frame" id="guideFrame" hidden><canvas id="guideCanvas"></canvas></div>
     <p class="empty-compare" id="compareEmpty" hidden></p>
   </section>
 
   <aside class="inspector" id="inspector">
     <!-- Prepara -->
+    <!-- Prepara: tutto a fisarmonica, chiuso mostra lo stato -->
     <div id="prepareInspector">
-      <div class="section">
-        <div>
+      <div class="ph-head">
+        <div class="ph-txt">
           <div class="photo-title" id="photoTitle"></div>
           <div class="photo-sub" id="photoSub"></div>
         </div>
-        <div class="row2">
-          <label class="field"><span>Data</span><input class="input" type="date" id="dateInput"></label>
-          <label class="field"><span>Posa</span><select class="input" id="poseInput"></select></label>
-        </div>
-        <button class="btn" id="refBtn" aria-pressed="false"><svg class="icon"><use href="#i-star"/></svg><span>Usa come riferimento</span></button>
-      </div>
-      <div class="section" id="coachSection" hidden>
-        <span class="section-title">Rispetto al riferimento</span>
-        <ul class="tips" id="coachTips"></ul>
+        <button class="btn ghost icon-only" id="refBtn" aria-pressed="false"><svg class="icon"><use href="#i-star"/></svg></button>
       </div>
 
-      <div class="section">
-        <div class="segmented full" role="group" aria-label="Punti">
-          <button id="modeAlign" aria-pressed="true">Allineamento</button>
-          <button id="modeMeasure" aria-pressed="false">Misure</button>
+      <details class="acc" id="accPoints">
+        <summary><span class="acc-title">Punti e misure</span><span class="acc-sum" id="pointsSum"></span><svg class="icon acc-chev" aria-hidden="true"><use href="#i-chev"/></svg></summary>
+        <div class="acc-body">
+          <div class="segmented full" role="group" aria-label="Punti">
+            <button id="modeAlign" aria-pressed="true">Allineamento</button>
+            <button id="modeMeasure" aria-pressed="false">Misure</button>
+          </div>
+          <ol class="steps" id="steps"></ol>
+          <div class="actions">
+            <button class="btn" id="undoBtn"><svg class="icon"><use href="#i-undo"/></svg>Annulla punto</button>
+            <button class="btn ghost" id="clearBtn"><svg class="icon"><use href="#i-reset"/></svg>Ricomincia</button>
+            <button class="btn ghost" id="skipBtn" hidden>Salta</button>
+            <button class="btn" id="confirmBtn" hidden>Sono giusti</button>
+            <button class="btn ghost" id="autoBtn" hidden><svg class="icon"><use href="#i-sparkle"/></svg>Rifai in automatico</button>
+            <button class="btn ghost" id="pointsBtn" hidden>Cambia punti</button>
+          </div>
+          <p class="note" id="stepNote"></p>
         </div>
-        <ol class="steps" id="steps"></ol>
-        <div class="actions">
-          <button class="btn" id="undoBtn"><svg class="icon"><use href="#i-undo"/></svg>Annulla punto</button>
-          <button class="btn ghost" id="clearBtn"><svg class="icon"><use href="#i-reset"/></svg>Ricomincia</button>
-          <button class="btn ghost" id="skipBtn" hidden>Salta</button>
-          <button class="btn" id="confirmBtn" hidden>Sono giusti</button>
-          <button class="btn ghost" id="autoBtn" hidden><svg class="icon"><use href="#i-sparkle"/></svg>Rifai in automatico</button>
-          <button class="btn ghost" id="pointsBtn" hidden>Cambia punti</button>
-        </div>
-        <p class="note" id="stepNote"></p>
-      </div>
+      </details>
 
-      <div class="section">
-        <div class="section-head">
-          <span class="section-title">Regola foto</span>
-          <button class="btn ghost" id="resetAdjust">Ripristina</button>
+      <details class="acc" id="accPhoto">
+        <summary><span class="acc-title">Data e posa</span><span class="acc-sum" id="photoSum"></span><svg class="icon acc-chev" aria-hidden="true"><use href="#i-chev"/></svg></summary>
+        <div class="acc-body">
+          <div class="row2">
+            <label class="field"><span>Data</span><input class="input" type="date" id="dateInput"></label>
+            <label class="field"><span>Posa</span><select class="input" id="poseInput"></select></label>
+          </div>
+          <p class="note" id="refNote"></p>
         </div>
-        <button class="btn" id="flipBtn" aria-pressed="false"><svg class="icon"><use href="#i-flip"/></svg>Specchia</button>
-        <label class="slider"><span>Luce</span><input type="range" id="brightInput" min="-50" max="50" value="0"><output id="brightOut">0</output></label>
-        <label class="slider"><span>Contrasto</span><input type="range" id="contrastInput" min="-50" max="50" value="0"><output id="contrastOut">0</output></label>
-      </div>
+      </details>
+
+      <details class="acc" id="accAdjust">
+        <summary><span class="acc-title">Regola foto</span><span class="acc-sum" id="adjustSum"></span><svg class="icon acc-chev" aria-hidden="true"><use href="#i-chev"/></svg></summary>
+        <div class="acc-body">
+          <div class="actions">
+            <button class="btn" id="flipBtn" aria-pressed="false"><svg class="icon"><use href="#i-flip"/></svg>Specchia</button>
+            <button class="btn ghost" id="resetAdjust">Ripristina</button>
+          </div>
+          <label class="slider"><span>Luce</span><input type="range" id="brightInput" min="-50" max="50" value="0"><output id="brightOut">0</output></label>
+          <label class="slider"><span>Contrasto</span><input type="range" id="contrastInput" min="-50" max="50" value="0"><output id="contrastOut">0</output></label>
+        </div>
+      </details>
+
+      <details class="acc" id="coachSection" hidden>
+        <summary><span class="acc-title">Rispetto al riferimento</span><span class="acc-sum" id="coachSum"></span><svg class="icon acc-chev" aria-hidden="true"><use href="#i-chev"/></svg></summary>
+        <div class="acc-body"><ul class="tips" id="coachTips"></ul></div>
+      </details>
     </div>
 
     <!-- Guida -->
     <div id="guideInspector" hidden></div>
 
     <!-- Confronta -->
+    <!-- Confronta: le foto e la vista stanno sotto il confronto; qui i risultati, a fisarmonica -->
     <div id="compareInspector" hidden>
-      <div class="section">
-        <label class="field"><span>Posa</span><select class="input" id="comparePose"></select></label>
-        <div class="row2">
-          <label class="field"><span>Prima</span><select class="input" id="selA"></select></label>
-          <label class="field"><span>Dopo</span><select class="input" id="selB"></select></label>
+      <details class="acc" id="accAnalysis" open>
+        <summary><span class="acc-title">Analisi</span><span class="acc-sum" id="analysisSum"></span><svg class="icon acc-chev" aria-hidden="true"><use href="#i-chev"/></svg></summary>
+        <div class="acc-body" id="analysis"></div>
+      </details>
+      <details class="acc" id="accResults">
+        <summary><span class="acc-title">Numeri</span><span class="acc-sum" id="resultsSum"></span><svg class="icon acc-chev" aria-hidden="true"><use href="#i-chev"/></svg></summary>
+        <div class="acc-body results" id="results"></div>
+      </details>
+      <details class="acc" id="accQuality">
+        <summary><span class="acc-title">Foto nell'analisi</span><span class="acc-sum" id="qualitySum"></span><svg class="icon acc-chev" aria-hidden="true"><use href="#i-chev"/></svg></summary>
+        <div class="acc-body" id="quality"></div>
+      </details>
+      <details class="acc" id="tweakSection">
+        <summary><span class="acc-title">Ritocca a mano</span><span class="acc-sum" id="tweakSum"></span><svg class="icon acc-chev" aria-hidden="true"><use href="#i-chev"/></svg></summary>
+        <div class="acc-body">
+          <div class="segmented full" role="group" aria-label="Foto da ritoccare">
+            <button data-tweak="A" aria-pressed="false">Prima</button>
+            <button data-tweak="B" aria-pressed="true">Dopo</button>
+          </div>
+          <label class="slider"><span>Dimensione</span><input type="range" data-t="s" min="-15" max="15" step="0.5" value="0"><output data-o="s">0%</output></label>
+          <label class="slider"><span>Rotazione</span><input type="range" data-t="r" min="-10" max="10" step="0.25" value="0"><output data-o="r">0°</output></label>
+          <label class="slider"><span>Orizzontale</span><input type="range" data-t="x" min="-40" max="40" step="1" value="0"><output data-o="x">0</output></label>
+          <label class="slider"><span>Verticale</span><input type="range" data-t="y" min="-40" max="40" step="1" value="0"><output data-o="y">0</output></label>
+          <div class="actions"><button class="btn ghost" id="tweakReset">Azzera</button></div>
+          <p class="note">Si vede meglio con Sfumate.<span class="kbd-hint"> Da tastiera: frecce per spostare, + e − per la dimensione, &lt; e &gt; per ruotare.</span></p>
         </div>
-      </div>
-      <div class="section">
-        <span class="section-title">Vista</span>
-        <div class="segmented full" role="group" aria-label="Vista">
-          <button data-cmode="wipe" aria-pressed="true">Cursore</button>
-          <button data-cmode="side" aria-pressed="false">Affiancate</button>
-          <button data-cmode="fade" aria-pressed="false">Sfumate</button>
-          <button data-cmode="diff" aria-pressed="false" title="Dove è cambiata la definizione">Differenze</button>
-        </div>
-        <label class="slider" id="valueGroup"><span id="valueLabel">Cursore</span><input type="range" id="valueInput" min="0" max="100" value="50"><output id="valueOut">50%</output></label>
-        <label class="switch"><span>Linee guida</span><input type="checkbox" id="guidesInput"></label>
-        <button class="btn" id="downloadBtn"><svg class="icon"><use href="#i-download"/></svg>Scarica immagine</button>
-      </div>
-      <div class="section" id="tweakSection">
-        <div class="section-head">
-          <span class="section-title">Ritocca a mano</span>
-          <button class="btn ghost" id="tweakReset">Azzera</button>
-        </div>
-        <div class="segmented full" role="group" aria-label="Foto da ritoccare">
-          <button data-tweak="A" aria-pressed="false">Prima</button>
-          <button data-tweak="B" aria-pressed="true">Dopo</button>
-        </div>
-        <label class="slider"><span>Dimensione</span><input type="range" data-t="s" min="-15" max="15" step="0.5" value="0"><output data-o="s">0%</output></label>
-        <label class="slider"><span>Rotazione</span><input type="range" data-t="r" min="-10" max="10" step="0.25" value="0"><output data-o="r">0°</output></label>
-        <label class="slider"><span>Orizzontale</span><input type="range" data-t="x" min="-40" max="40" step="1" value="0"><output data-o="x">0</output></label>
-        <label class="slider"><span>Verticale</span><input type="range" data-t="y" min="-40" max="40" step="1" value="0"><output data-o="y">0</output></label>
-        <p class="note">Si vede meglio con Sfumate.<span class="kbd-hint"> Da tastiera: frecce per spostare, + e − per la dimensione, &lt; e &gt; per ruotare.</span></p>
-      </div>
-      <div class="section" id="analysis"></div>
-      <div class="section" id="quality"></div>
-      <div class="section results" id="results"></div>
+      </details>
     </div>
   </aside>
 </main>
@@ -577,6 +683,17 @@
     <div class="body tips-body"></div>
     <footer><button class="btn primary" value="close">Ho capito</button></footer>
   </form>
+</dialog>
+
+<!-- Cassetto delle foto: da qui si scelgono Prima e Dopo del confronto -->
+<dialog class="sheet" id="photoSheet" aria-labelledby="sheetTitle">
+  <div class="sheet-grab" aria-hidden="true"></div>
+  <header class="sheet-head">
+    <h2 id="sheetTitle">Scegli la foto</h2>
+    <button type="button" class="btn ghost icon-only" id="sheetClose" aria-label="Chiudi"><svg class="icon"><use href="#i-x"/></svg></button>
+  </header>
+  <div class="sheet-tabs segmented full" role="tablist" aria-label="Posa" id="sheetPoses"></div>
+  <div class="sheet-body" id="sheetGrid"></div>
 </dialog>
 
 <dialog class="dialog" id="settingsDialog" aria-labelledby="settingsTitle">
@@ -2050,8 +2167,19 @@ function updatePrepare() {
   const p = state.selected;
   if (!p) return;
   const pose = POSES[p.pose];
+  // Sul computer le sezioni principali partono aperte, sul telefono chiuse: chiuse dicono già lo stato
+  if (!updatePrepare.init) {
+    updatePrepare.init = true;
+    $("#accPoints").open = !MOBILE || settings.detect === "manual";
+    $("#accPhoto").open = !MOBILE;
+  }
   $("#photoTitle").textContent = p.date ? fmtDate(p.date) : "Senza data";
-  $("#photoSub").textContent = p.name;
+  $("#photoSub").textContent = `${pose.label} · ${p.name}`;
+  $("#photoSum").textContent = `${p.date ? fmtDate(p.date) : "senza data"} · ${pose.label.toLowerCase()}`;
+  const nMeas = pose.measures.filter((id) => p.meas[id]?.length === 2).length;
+  $("#pointsSum").textContent = !p.M ? (p.align.length ? `${p.align.length} punti di ${alignSteps(p).length}` : "da allineare")
+    : `${p.auto ? "allineata in automatico" : "allineata"}${pose.measures.length ? ` · ${nMeas}/${pose.measures.length} misure` : ""}`;
+  $("#adjustSum").textContent = [p.flip && "specchiata", p.bright && `luce ${p.bright > 0 ? "+" : ""}${p.bright}`, p.contrast && `contrasto ${p.contrast > 0 ? "+" : ""}${p.contrast}`].filter(Boolean).join(" · ") || "originale";
   $("#dateInput").value = p.date || "";
   $("#poseInput").value = p.pose;
   $("#flipBtn").setAttribute("aria-pressed", p.flip);
@@ -2080,14 +2208,20 @@ function updatePrepare() {
   $("#clearBtn").disabled = !anyDone;
   $("#skipBtn").hidden = !(state.mode === "align" && pose.align[2]?.optional && p.align.length === 2 && !p.noThird);
   const refs = state.photos.filter((q) => q.ref && q.pose === p.pose).length;
+  // Stella: foto di riferimento (quella da rifare uguale)
+  const refFull = !p.ref && refs >= MAX_REFS;
   $("#refBtn").setAttribute("aria-pressed", p.ref);
-  $("#refBtn span").textContent = p.ref ? "Riferimento · togli" : "Usa come riferimento";
-  $("#refBtn").disabled = !p.ref && refs >= MAX_REFS;
-  $("#refBtn").title = $("#refBtn").disabled ? `Hai già ${MAX_REFS} riferimenti ${POSES[p.pose].label.toLowerCase()}: togline uno` : "La foto resta salvata solo in questo browser";
+  $("#refBtn").disabled = refFull;
+  $("#refBtn").title = p.ref ? "Riferimento: tocca per toglierlo" : refFull ? `Hai già ${MAX_REFS} riferimenti ${pose.label.toLowerCase()}: togline uno` : "Usa come riferimento (resta salvata solo in questo browser)";
+  $("#refBtn").setAttribute("aria-label", p.ref ? "Togli dai riferimenti" : "Usa come riferimento");
+  $("#refNote").textContent = p.ref ? "È un riferimento: la foto da rifare uguale. Resta salvata solo in questo browser." : "La stella in alto la rende un riferimento: la foto da rifare uguale.";
   const ref = refFor(p.pose);
   const tips = ref && ref !== p ? coachTips(p, ref) : null;
   $("#coachSection").hidden = !tips;
-  if (tips) $("#coachTips").innerHTML = tips.length ? tips.map((t) => `<li>${esc(t)}</li>`).join("") : '<li class="ok">Inquadratura uguale al riferimento.</li>';
+  if (tips) {
+    $("#coachTips").innerHTML = tips.length ? tips.map((t) => `<li>${esc(t)}</li>`).join("") : '<li class="ok">Inquadratura uguale al riferimento.</li>';
+    $("#coachSum").textContent = tips.length ? (tips.length === 1 ? "1 consiglio" : `${tips.length} consigli`) : "uguale";
+  }
   const toCheck = state.mode === "align" && p.auto && !p.auto.sure;
   $("#confirmBtn").hidden = !toCheck || settings.detect === "auto";
   $("#autoBtn").hidden = !(state.mode === "align" && p.lm?.length && (settings.detect === "auto" || anchorsFor(p.pose).some((a) => a !== p)));
@@ -2183,7 +2317,9 @@ function syncEditBar() {
   let any = false;
   bar.querySelectorAll("[data-proxy]").forEach((b) => {
     const src = $(`#${b.dataset.proxy}`);
-    b.hidden = src.hidden || !$("#pointPick").hidden;
+    b.hidden = src.hidden || !$("#pointPick").hidden
+      // Punti messi in automatico: niente "Annulla" in primo piano, si correggono trascinandoli
+      || (b.dataset.proxy === "undoBtn" && settings.detect === "auto" && !!state.selected?.auto);
     b.disabled = src.disabled;
     any ||= !b.hidden;
   });
@@ -2552,8 +2688,8 @@ function guides(ctx, width, k) {
 function drawCompare() {
   const k = state.comparePose;
   const ready = readyFor(k);
-  const A = ready.find((p) => p.key === $("#selA").value);
-  const B = ready.find((p) => p.key === $("#selB").value);
+  const A = ready.find((p) => p.key === state.selA);
+  const B = ready.find((p) => p.key === state.selB);
   if (!A || !B) return;
   const side = state.cmode === "side";
   compareCanvas.width = side ? CW * 2 + 6 : CW;
@@ -2562,7 +2698,7 @@ function drawCompare() {
   const ctx = compareCanvas.getContext("2d");
   ctx.fillStyle = "#0e0e10";
   ctx.fillRect(0, 0, compareCanvas.width, CH);
-  const showGuides = $("#guidesInput").checked;
+  const showGuides = !!state.guides;
 
   if (side) {
     drawAligned(ctx, A, 0);
@@ -2606,25 +2742,80 @@ function drawCompare() {
   }
 }
 
+// Prima e Dopo: chiavi delle foto. Se non ci sono più (o sono di un'altra posa) si torna alla prima e all'ultima
+const photoOf = (key) => readyFor(state.comparePose).find((p) => p.key === key) || null;
 function fillCompareControls() {
   const poses = POSE_KEYS.filter((k) => readyFor(k).length >= 2);
   if (!poses.includes(state.comparePose)) state.comparePose = poses[0];
-  $("#comparePose").innerHTML = poses.map((k) => `<option value="${k}">${POSES[k].label} · ${readyFor(k).length} foto</option>`).join("");
-  $("#comparePose").value = state.comparePose;
   const ready = readyFor(state.comparePose);
-  for (const [id, fallback] of [["#selA", ready[0]], ["#selB", ready[ready.length - 1]]]) {
-    const sel = $(id);
-    const current = ready.some((p) => p.key === sel.value) ? sel.value : fallback.key;
-    sel.innerHTML = ready.map((p) => `<option value="${esc(p.key)}">${esc(labelOf(p))}</option>`).join("");
-    sel.value = current;
+  if (!photoOf(state.selA)) state.selA = ready[0]?.key;
+  if (!photoOf(state.selB) || state.selB === state.selA) state.selB = ready.filter((p) => p.key !== state.selA).pop()?.key;
+  for (const slot of ["A", "B"]) {
+    const p = photoOf(state[`sel${slot}`]), b = document.querySelector(`.cmp-slot[data-slot="${slot}"]`);
+    b.querySelector("img").src = p?.thumb || "";
+    // Data corta (10/01/26): ci sta anche sul telefono
+    b.querySelector("b").textContent = p ? (p.date ? fmtDate(p.date).replace(/\/20(\d\d)$/, "/$1") : p.name) : "Scegli";
+    b.setAttribute("aria-label", `${slot === "A" ? "Prima" : "Dopo"}: ${p ? labelOf(p) : "nessuna"}. Cambia foto`);
   }
   document.querySelectorAll("[data-cmode]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.cmode === state.cmode));
-  $("#valueGroup").hidden = state.cmode === "side" || state.cmode === "diff";
+  $("#valueGroup").style.visibility = state.cmode === "side" || state.cmode === "diff" ? "hidden" : "";
   $("#valueLabel").textContent = state.cmode === "wipe" ? "Cursore" : "Prima";
   const v = state.cmode === "wipe" ? state.wipe : state.fade;
   $("#valueInput").value = v;
   $("#valueOut").textContent = `${v}%`;
+  $("#guidesBtn").setAttribute("aria-pressed", !!state.guides);
 }
+
+// ---- cassetto delle foto: tocchi Prima o Dopo, scegli dalla griglia
+const sheet = $("#photoSheet");
+let sheetSlot = "A", sheetPose = "front";
+function openSheet(slot) {
+  sheetSlot = slot;
+  sheetPose = state.comparePose;
+  renderSheet();
+  sheet.showModal();
+  sheet.querySelector(`.sheet-item[aria-pressed="true"]`)?.scrollIntoView({ block: "nearest" });
+}
+function renderSheet() {
+  const poses = POSE_KEYS.filter((k) => readyFor(k).length >= 2);
+  $("#sheetTitle").textContent = sheetSlot === "A" ? "Scegli la foto Prima" : "Scegli la foto Dopo";
+  $("#sheetPoses").hidden = poses.length < 2;
+  $("#sheetPoses").innerHTML = poses.map((k) => `<button type="button" role="tab" data-spose="${k}" aria-selected="${k === sheetPose}">${POSES[k].label} <small>${readyFor(k).length}</small></button>`).join("");
+  const mine = sheetPose === state.comparePose ? state[`sel${sheetSlot}`] : null;
+  const other = sheetPose === state.comparePose ? state[`sel${sheetSlot === "A" ? "B" : "A"}`] : null;
+  // Dalla più recente: di solito si cerca l'ultima foto
+  const list = [...readyFor(sheetPose)].reverse();
+  $("#sheetGrid").innerHTML = `<div class="sheet-grid">${list.map((p) => {
+    const tagTxt = p.key === mine ? (sheetSlot === "A" ? "Prima" : "Dopo") : p.key === other ? (sheetSlot === "A" ? "Dopo" : "Prima") : "";
+    return `<button type="button" class="sheet-item" data-key="${esc(p.key)}" aria-pressed="${p.key === mine}">`
+      + `<img alt="" src="${p.thumb}">${tagTxt ? `<span class="sheet-tag ${p.key === mine ? "on" : ""}">${tagTxt}</span>` : ""}`
+      + `${p.ref ? '<span class="sheet-ref" title="Riferimento"><svg class="icon"><use href="#i-star"/></svg></span>' : ""}`
+      + `<span class="sheet-date">${esc(p.date ? fmtDate(p.date) : "Senza data")}</span></button>`;
+  }).join("")}</div>`;
+  $("#sheetPoses").querySelectorAll("[data-spose]").forEach((b) => b.addEventListener("click", () => { sheetPose = b.dataset.spose; renderSheet(); }));
+  $("#sheetGrid").querySelectorAll("[data-key]").forEach((b) => b.addEventListener("click", () => pickCompare(b.dataset.key)));
+}
+function pickCompare(key) {
+  const slot = `sel${sheetSlot}`, otherSlot = `sel${sheetSlot === "A" ? "B" : "A"}`;
+  if (sheetPose !== state.comparePose) {
+    // Altra posa: l'altra foto diventa la più lontana nel tempo da quella scelta
+    state.comparePose = sheetPose;
+    const ready = readyFor(sheetPose), i = ready.findIndex((p) => p.key === key);
+    state[otherSlot] = (i < ready.length / 2 ? ready[ready.length - 1] : ready[0]).key;
+    if (state[otherSlot] === key) state[otherSlot] = ready.find((p) => p.key !== key).key;
+  } else if (state[otherSlot] === key) state[otherSlot] = state[slot]; // la stessa foto: si scambiano
+  state[slot] = key;
+  // Prima viene prima nel tempo
+  const A = photoOf(state.selA), B = photoOf(state.selB);
+  if (A && B && byDate(A, B) > 0) [state.selA, state.selB] = [state.selB, state.selA];
+  sheet.close();
+  refresh();
+}
+document.querySelectorAll(".cmp-slot").forEach((b) => b.addEventListener("click", () => openSheet(b.dataset.slot)));
+$("#sheetClose").addEventListener("click", () => sheet.close());
+sheet.addEventListener("click", (e) => { if (e.target === sheet) sheet.close(); }); // tocco fuori dal cassetto
+$("#swapBtn").addEventListener("click", () => { [state.selA, state.selB] = [state.selB, state.selA]; refresh(); });
+$("#guidesBtn").addEventListener("click", () => { state.guides = !state.guides; fillCompareControls(); drawCompare(); });
 
 document.querySelectorAll("[data-cmode]").forEach((b) => b.addEventListener("click", () => {
   state.cmode = b.dataset.cmode;
@@ -2636,17 +2827,10 @@ $("#valueInput").addEventListener("input", (e) => {
   $("#valueOut").textContent = `${e.target.value}%`;
   drawCompare();
 });
-$("#comparePose").addEventListener("change", (e) => {
-  state.comparePose = e.target.value;
-  $("#selA").value = "";
-  $("#selB").value = "";
-  refresh();
-});
-["#selA", "#selB", "#guidesInput"].forEach((s) => $(s).addEventListener("change", () => { drawCompare(); fillTweak(); }));
 
 // ---- ritocco a mano
 state.tweakSide = "B";
-const tweakTarget = () => state.photos.find((p) => p.key === $(state.tweakSide === "A" ? "#selA" : "#selB").value);
+const tweakTarget = () => state.photos.find((p) => p.key === (state.tweakSide === "A" ? state.selA : state.selB));
 const tweakText = { s: (v) => `${signed(v, v % 1 ? 1 : 0)}%`, r: (v) => `${signed(v, v % 1 ? 2 : 0).replace(/,?0+$/, "")}°`, x: (v) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v)}`, y: (v) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v)}` };
 function fillTweak() {
   const p = tweakTarget(), t = p?.tweak || NO_TWEAK;
@@ -2656,6 +2840,8 @@ function fillTweak() {
     $(`[data-o="${input.dataset.t}"]`).textContent = tweakText[input.dataset.t](t[input.dataset.t]);
   });
   $("#tweakReset").disabled = !p || !hasTweak(p);
+  const tw = [state.selA, state.selB].map((k) => state.photos.find((q) => q.key === k)).filter((q) => q && hasTweak(q)).length;
+  $("#tweakSum").textContent = tw ? (tw === 2 ? "tutte e due ritoccate" : "1 foto ritoccata") : "niente";
 }
 let tweakTimer = 0;
 function setTweak(key, value, live) {
@@ -2690,8 +2876,8 @@ function wipeDrag(e) {
   drawCompare();
 }
 $("#downloadBtn").addEventListener("click", () => {
-  const A = state.photos.find((p) => p.key === $("#selA").value);
-  const B = state.photos.find((p) => p.key === $("#selB").value);
+  const A = state.photos.find((p) => p.key === state.selA);
+  const B = state.photos.find((p) => p.key === state.selB);
   const a = document.createElement("a");
   a.download = `confronto-${state.comparePose}-${A?.date || "prima"}-${B?.date || "dopo"}.png`;
   a.href = compareCanvas.toDataURL("image/png");
@@ -2701,15 +2887,16 @@ $("#downloadBtn").addEventListener("click", () => {
 function renderResults(an) {
   const rows = an.used.filter((r) => r.m);
   const box = $("#results");
-  box.hidden = !rows.length;
+  $("#accResults").hidden = !rows.length;
   if (!rows.length) return;
+  $("#resultsSum").textContent = `${rows.length} foto misurate`;
   // Un rapporto (il primo che c'è) e fino a 3 misure, ognuna rispetto alla prima foto che ce l'ha
   const ratio = POSES[an.k].ratios.find((r) => rows.some((x) => x.m.ratios[r.id]));
   const ids = POSES[an.k].measures.filter((id) => rows.some((x) => x.m.values[id])).slice(0, ratio ? 3 : 4);
   const first = Object.fromEntries(ids.map((id) => [id, rows.find((x) => x.m.values[id]).m.values[id]]));
   const pct = (v) => `<span class="${Math.abs(v) < NOISE.width ? "" : v > 0 ? "up" : "down"}">${signed(v * 100)}%</span>`;
   const short = (name) => name.length > 9 ? `${name.slice(0, 8)}.` : name;
-  let html = `<span class="section-title">Numeri</span><table><thead><tr><th>Foto</th>${ratio ? `<th title="${esc(ratio.name)}">${esc(short(ratio.name))}</th>` : ""}`
+  let html = `<table><thead><tr><th>Foto</th>${ratio ? `<th title="${esc(ratio.name)}">${esc(short(ratio.name))}</th>` : ""}`
     + ids.map((id) => `<th>${esc(short(MEASURES[an.k][id].name))}</th>`).join("") + `</tr></thead><tbody>`;
   for (const { p, m } of rows) {
     html += `<tr><td>${esc(labelOf(p))}</td>${ratio ? `<td>${m.ratios[ratio.id] ? num(m.ratios[ratio.id], 2) : "–"}</td>` : ""}`
@@ -3057,8 +3244,9 @@ function renderAnalysis(an) {
   if (dups) notes.unshift(`Tengo una foto per giorno, la più simile alle altre: ${dups === 1 ? "1 doppione escluso" : `${dups} doppioni esclusi`}.`);
   if (an.trends.def.some(({ tr }) => tr && tr.verdict !== "no" && tr.chg > 0)) notes.push("La definizione la gonfiano pump e luce dall'alto: meglio foto a freddo, sempre con la stessa luce.");
 
-  box.innerHTML = `<span class="section-title">Analisi</span>`
-    + `<div class="meta">${esc(pose.label)} · ${an.used.length} foto${out.length ? ` su ${an.rows.length}` : ""}${an.hasDates ? ` · ${spanText(an)}` : ""}</div>`
+  const verdict = seen.length ? `${seen.length === 1 ? "1 cambio visibile" : `${seen.length} cambi visibili`}` : maybe.length ? "qualcosa si muove" : still.length ? "niente oltre il margine" : `${an.used.length} foto`;
+  $("#analysisSum").textContent = verdict;
+  box.innerHTML = `<div class="meta">${esc(pose.label)} · ${an.used.length} foto${out.length ? ` su ${an.rows.length}` : ""}${an.hasDates ? ` · ${spanText(an)}` : ""}</div>`
     + (lead ? `<p class="lead">${lead}</p>` : "")
     + (cards.length ? `<div class="metrics">${cards.join("")}</div>` : "")
     + (notes.length ? `<ul class="caveats">${notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : "");
@@ -3077,7 +3265,9 @@ function renderQuality(an) {
       + `<label class="switch" title="Usa nell'analisi"><input type="checkbox" data-use="${esc(r.p.key)}" ${r.use ? "checked" : ""} aria-label="Usa ${esc(labelOf(r.p))} nell'analisi"></label>`
       + `<div class="why">${esc(cap1(text))}</div></li>`;
   }).join("");
-  box.innerHTML = `<span class="section-title">Foto</span><ul class="qlist">${items}</ul>`;
+  const usedN = an.rows.filter((r) => r.use).length;
+  $("#qualitySum").textContent = `${usedN} di ${an.rows.length}`;
+  box.innerHTML = `<ul class="qlist">${items}</ul>`;
   box.querySelectorAll("[data-use]").forEach((input) => input.addEventListener("change", () => {
     const r = an.rows.find((x) => x.p.key === input.dataset.use);
     r.p.use = input.checked === r.auto ? null : input.checked;
@@ -3329,34 +3519,47 @@ function openSettings(first = false) {
     const n = Object.entries(POINT_CHOICES).reduce((s, [k, c]) => s + (draft[c.key] !== settings[c.key] ? alignedIn(k) : 0), 0);
     return n ? `<p class="warn">Cambiando i punti, ${n === 1 ? "la foto già allineata va riallineata" : `le ${n} foto già allineate vanno riallineate`}: li ritrovo io e tu li controlli. Le misure restano.</p>` : "";
   };
+  // Sezioni a fisarmonica: chiuse mostrano la scelta fatta. La prima volta sono aperte solo le tre che contano
+  const open = new Set(first ? ["who", "framing", "detect"] : []);
+  const sec = (id, title, sum, body) => `<details class="acc" data-acc="${id}" ${open.has(id) ? "open" : ""}>`
+    + `<summary><span class="acc-title">${title}</span><span class="acc-sum">${esc(sum)}</span><svg class="icon acc-chev" aria-hidden="true"><use href="#i-chev"/></svg></summary>`
+    + `<div class="acc-body">${body}</div></details>`;
   const render = () => {
     const chips = POSE_KEYS_ALL.map((k) => `<div class="pose">${POSE_LABELS[k]}</div><div class="opts">${Object.entries(MEASURES[k]).map(([id, m]) => {
       const off = m.full && draft.framing !== "full";
       return `<label class="chip" ${off ? 'title="Solo con la figura intera"' : ""}><input type="checkbox" data-pose="${k}" data-id="${id}" ${draft.measures[k]?.includes(id) && !off ? "checked" : ""} ${off ? "disabled" : ""}><span>${esc(m.name)}</span></label>`;
     }).join("")}</div>`).join("");
+    // Il focus resta sul controllo che stavi usando anche dopo aver ricostruito la finestra
+    const f = dlg.contains(document.activeElement) ? document.activeElement : null;
+    const refocus = f?.dataset?.id ? `[data-pose="${f.dataset.pose}"][data-id="${f.dataset.id}"]` : f?.name ? `input[name="${f.name}"][value="${f.value}"]` : f?.id ? `#${f.id}` : null;
+    queueMicrotask(() => { if (refocus) dlg.querySelector(refocus)?.focus({ preventScroll: true }); });
+    const nMeas = POSE_KEYS_ALL.reduce((s, k) => s + (draft.measures[k] || []).filter((id) => !MEASURES[k][id]?.full || draft.framing === "full").length, 0);
+    const t = +localStorage.getItem(LAST_EXPORT_KEY), days = t ? Math.floor((Date.now() - t) / 864e5) : -1;
     dlg.querySelector(".body").innerHTML = `
-      <fieldset><legend>Chi usa l'app</legend>${radios("who", WHO, draft.who, WHO_SUB)}</fieldset>
-      <fieldset><legend>Come fai le foto</legend>${radios("framing", FRAMINGS, draft.framing)}</fieldset>
-      <fieldset><legend>Rilevamento dei punti</legend>${radios("detect", DETECTS, draft.detect)}</fieldset>
-      ${draft.detect === "auto" ? `<fieldset><legend>Punti per allineare</legend>
-        <div class="pose-label">Di fronte</div>${radios("scheme", SCHEMES, draft.scheme)}
-        <div class="pose-label">Di lato</div>${radios("sideScheme", SIDE_SCHEMES, draft.sideScheme)}
-        ${changedWarn()}</fieldset>`
-        : `<fieldset><legend>Punti per allineare</legend><p class="note">Li scegli sulla prima foto di ogni posa, quando metti i punti. Per cambiarli dopo: <b>Cambia punti</b>, sotto l'elenco dei punti.</p></fieldset>`}
-      <fieldset><legend>Cosa misurare <button type="button" class="link" id="presetBtn">Ripristina quelle consigliate</button></legend><div class="checks">${chips}</div>${draft.framing !== "full" ? '<p class="note">Coscia e polpaccio si misurano solo con la figura intera (in “Come fai le foto”).</p>' : ""}</fieldset>
-      <fieldset><legend>Definizione</legend><label class="switch"><span>Stima la definizione muscolare<small>Ombre fra i muscoli di petto, addome e schiena. Spegnila se fai le foto con la maglietta.</small></span><input type="checkbox" id="defInput" ${draft.definition ? "checked" : ""}></label></fieldset>
-      <fieldset><legend>I tuoi progressi</legend>
+      ${sec("who", "Chi usa l'app", WHO[draft.who], radios("who", WHO, draft.who, WHO_SUB))}
+      ${sec("framing", "Come fai le foto", FRAMINGS[draft.framing].label, radios("framing", FRAMINGS, draft.framing))}
+      ${sec("detect", "Rilevamento dei punti", DETECTS[draft.detect].label, radios("detect", DETECTS, draft.detect))}
+      ${draft.detect === "auto"
+        ? sec("points", "Punti per allineare", `${SCHEMES[draft.scheme].label} · ${SIDE_SCHEMES[draft.sideScheme].label.toLowerCase()}`,
+          `<div class="pose-label">Di fronte</div>${radios("scheme", SCHEMES, draft.scheme)}
+          <div class="pose-label">Di lato</div>${radios("sideScheme", SIDE_SCHEMES, draft.sideScheme)}${changedWarn()}`)
+        : sec("points", "Punti per allineare", "Sulla prima foto", `<p class="note">Li scegli sulla prima foto di ogni posa, quando metti i punti. Per cambiarli dopo: <b>Cambia punti</b>, nella sezione Punti.</p>`)}
+      ${sec("measures", "Cosa misurare", nMeas === 1 ? "1 misura" : `${nMeas} misure`,
+        `<div class="checks">${chips}</div>${draft.framing !== "full" ? '<p class="note">Coscia e polpaccio si misurano solo con la figura intera (in “Come fai le foto”).</p>' : ""}
+        <button type="button" class="link" id="presetBtn">Ripristina quelle consigliate</button>`)}
+      ${sec("definition", "Definizione", draft.definition ? "Accesa" : "Spenta",
+        `<label class="switch"><span>Stima la definizione muscolare<small>Ombre fra i muscoli di petto, addome e schiena. Spegnila se fai le foto con la maglietta.</small></span><input type="checkbox" id="defInput" ${draft.definition ? "checked" : ""}></label>`)}
+      ${sec("data", "I tuoi progressi", days < 0 ? "Mai salvati in un file" : days === 0 ? "Salvati oggi" : days === 1 ? "Salvati ieri" : `Salvati ${days} giorni fa`, `
         <p class="note">Punti, misure, diario e impostazioni stanno solo in questo browser. Salvali in un file per non perderli o per passarli su un altro dispositivo. Le foto non ci sono: quando apri il file, aggiungi di nuovo le foto e i punti tornano.${MOBILE ? " Su iPhone Safari cancella i dati dei siti che non apri da una settimana: aggiungi la pagina alla schermata Home o salva spesso." : ""}</p>
         <label class="switch"><span>Includi le foto di riferimento<small>Il file pesa di più e contiene quelle foto.</small></span><input type="checkbox" id="withRefs" checked></label>
         <div class="data-actions">
           <button type="button" class="btn" id="exportBtn"><svg class="icon"><use href="#i-download"/></svg>Salva i progressi</button>
           <button type="button" class="btn ghost" id="importBtn">Carica un file</button>
         </div>
-        <p class="note">${esc(lastExportText())}${MOBILE ? " Su iPhone salvalo in File › Sul mio iPhone: in iCloud Drive finirebbe online." : ""}</p>
-      </fieldset>
-      <fieldset><legend>Privacy</legend>
-        <p class="note">Le foto non lasciano mai questo dispositivo: si aprono e si analizzano qui. Niente account, cookie, statistiche o tracciamento. La pagina è bloccata dal browser e non può collegarsi ad altri siti${location.protocol === "file:" ? ", tranne i due da cui scarica le librerie" : ""}.</p>
-      </fieldset>`;
+        <p class="note">${esc(lastExportText())}${MOBILE ? " Su iPhone salvalo in File › Sul mio iPhone: in iCloud Drive finirebbe online." : ""}</p>`)}
+      ${sec("privacy", "Privacy", "Tutto resta qui",
+        `<p class="note">Le foto non lasciano mai questo dispositivo: si aprono e si analizzano qui. Niente account, cookie, statistiche o tracciamento. La pagina è bloccata dal browser e non può collegarsi ad altri siti${location.protocol === "file:" ? ", tranne i due da cui scarica le librerie" : ""}.</p>`)}`;
+    dlg.querySelectorAll("[data-acc]").forEach((d) => d.addEventListener("toggle", () => { if (d.open) open.add(d.dataset.acc); else open.delete(d.dataset.acc); }));
     dlg.querySelectorAll('input[name="who"]').forEach((i) => i.addEventListener("change", () => {
       draft.who = i.value;
       draft.scheme = i.value === "male" ? "nipples" : "neckNavel";
@@ -3377,13 +3580,15 @@ function openSettings(first = false) {
       const list = new Set(draft.measures[i.dataset.pose] || []);
       if (i.checked) list.add(i.dataset.id); else list.delete(i.dataset.id);
       draft.measures[i.dataset.pose] = Object.keys(MEASURES[i.dataset.pose]).filter((id) => list.has(id));
+      render();
     }));
     $("#presetBtn").addEventListener("click", () => { draft.measures = presetMeasures(draft.who, draft.framing); render(); });
-    $("#defInput").addEventListener("change", (e) => { draft.definition = e.target.checked; });
+    $("#defInput").addEventListener("change", (e) => { draft.definition = e.target.checked; render(); });
     $("#exportBtn").addEventListener("click", async () => { await exportProgress($("#withRefs").checked); render(); });
     // Un file caricato porta anche le sue impostazioni: la finestra si chiude senza applicare le scelte fatte qui
     $("#importBtn").addEventListener("click", () => pickImport(() => { dlg.returnValue = ""; dlg.onclose = null; dlg.close(); }));
   };
+  dlg.querySelector(".body").classList.add("accs");
   dlg.querySelector("h2").textContent = first ? "Prima di iniziare" : "Impostazioni";
   dlg.querySelector(".intro").textContent = first
     ? "Così misuro le cose giuste per te. Puoi cambiare tutto quando vuoi dalla rotella in alto."
@@ -3896,6 +4101,8 @@ function refresh() {
   if ($("#editFrame").hidden) { $("#editBar").hidden = true; $("#coach").hidden = true; $("#pointPick").hidden = true; }
   $("#howAlign").textContent = settings.detect === "auto" ? "Posa, punti e misure li trovo io." : "Una foto a mano, le altre in automatico.";
   $("#compareFrame").hidden = !has || state.view !== "compare";
+  $("#compareBar").hidden = $("#compareFrame").hidden;
+  $("#layout").dataset.view = state.view;
   $("#guideFrame").hidden = !has || state.view !== "guide";
   $("#prepareInspector").hidden = state.view !== "prepare";
   $("#compareInspector").hidden = state.view !== "compare";
@@ -3945,6 +4152,8 @@ window.addEventListener("drop", (e) => {
   addFiles([...e.dataTransfer.files]);
 });
 
+// Sul telefono anche l'analisi parte chiusa: il riassunto dice già com'è andata, si apre a richiesta
+if (MOBILE) $("#accAnalysis").open = false;
 refresh();
 loadRefs().then(() => { refresh(); processQueue(); });
 if (!settingsSaved) openSettings(true);
