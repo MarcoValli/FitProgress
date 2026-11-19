@@ -5,8 +5,9 @@
 <!-- Privacy: la pagina può collegarsi solo al proprio sito e, se aperta come file, ai file esatti delle librerie
      sui due CDN (non al resto di quei siti, dove chiunque può pubblicare). Niente cookie, niente statistiche.
      Script: parte solo quello di questa pagina, riconosciuto dalla sua impronta SHA-256 (più le librerie
-     controllate, come blob:). Dopo ogni modifica allo script: node tools/csp-hash.mjs, se no la pagina non parte. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-wQwRRHN2q0ulm51UKf1zUc5Z/9GKj5o1YoH3oTbHnPE=' blob: 'wasm-unsafe-eval'; connect-src 'self' blob: data: https://cdn.jsdelivr.net/npm/heic-to@1.6.7/dist/csp/heic-to.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/vision_bundle.mjs https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.wasm https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task; img-src 'self' blob: data:; style-src 'unsafe-inline'; worker-src 'self' blob:; manifest-src 'self'; base-uri 'none'; object-src 'none'; frame-src 'none'; form-action 'none'">
+     controllate, come blob:, e lo script di Telegram, caricato solo dentro Telegram). Dopo ogni modifica allo
+     script: node tools/csp-hash.mjs, se no la pagina non parte (a ogni push lo fa anche la GitHub Action). -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-ZMKw/Kp6T0SC7BzqP2dwDMmdLxHVBRV7Q8vqh0VLREQ=' blob: 'wasm-unsafe-eval' https://telegram.org/js/telegram-web-app.js; connect-src 'self' blob: data: https://cdn.jsdelivr.net/npm/heic-to@1.6.7/dist/csp/heic-to.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/vision_bundle.mjs https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.wasm https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task; img-src 'self' blob: data:; style-src 'unsafe-inline'; worker-src 'self' blob:; manifest-src 'self'; base-uri 'none'; object-src 'none'; frame-src 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -791,7 +792,7 @@
     <form class="card" id="logForm" aria-labelledby="logFormTitle" novalidate>
       <div>
         <h2 class="card-title" id="logFormTitle">Nuova misurazione</h2>
-        <div class="card-sub" id="logFormSub">Tutto facoltativo, tranne la data e almeno una misura.</div>
+        <div class="card-sub" id="logFormSub">Tutto facoltativo, tranne la data e almeno una misura, l'allenamento o il pasto.</div>
       </div>
       <label class="field"><span>Data</span><input class="input" type="date" id="logDate" required></label>
       <div class="row2" id="logMain"></div>
@@ -799,6 +800,8 @@
         <summary>Circonferenze <small>in cm</small></summary>
         <div class="log-grid" id="logCirc"></div>
       </details>
+      <label class="field"><span>Allenamento</span><input class="input" type="text" id="log-workout" maxlength="200" autocomplete="off" placeholder="Es. gambe, 60 min"></label>
+      <label class="field"><span>Pasto</span><input class="input" type="text" id="log-meal" maxlength="300" autocomplete="off" placeholder="Es. cena: pizza e birra"></label>
       <label class="field"><span>Nota</span><input class="input" type="text" id="logNote" maxlength="200" autocomplete="off" placeholder="Es. settimana di vacanza"></label>
       <p class="warn" id="logError" role="alert" hidden></p>
       <div class="actions">
@@ -934,6 +937,21 @@ const wipedNow = (() => {
   } catch { return false; }
   wipeStorage();
   return true;
+})();
+
+// ------------------------------------------------------------------ Telegram (facoltativo)
+//
+// Aperta dal bot dentro Telegram (Mini App), la pagina tiene i progressi nella chat col bot: all'apertura prende
+// l'ultimo file dei progressi, le foto mandate in chat e le voci del diario scritte al bot; Salva rimanda il file
+// nella chat. Fuori da Telegram non cambia niente. Il bot (cartella telegram/) serve anche questa pagina, quindi
+// le parla sullo stesso indirizzo (api/…). Telegram passa i dati firmati dell'utente nell'indirizzo (#tgWebAppData):
+// il bot li controlla a ogni richiesta.
+const TG = (() => {
+  try {
+    const initData = new URLSearchParams(location.hash.slice(1)).get("tgWebAppData");
+    // consumed: righe del bot (foto, voci del diario) già prese, da togliere dalla chat al prossimo Salva
+    return initData ? { initData, consumed: { photos: [], diary: [] } } : null;
+  } catch { return null; }
 })();
 
 // ------------------------------------------------------------------ impostazioni e pose
@@ -1536,7 +1554,8 @@ function saveKeptRoles() {
   try { localStorage.setItem(KEPT_KEY, JSON.stringify(kept)); } catch { /* spazio pieno */ }
 }
 // Chiavi che devono avere l'immagine salvata
-const keptNeeded = () => new Set([...Object.values(kept.start), ...Object.values(kept.after), ...kept.tappe]);
+// Su Telegram tutte le foto: dalla chat si cancellano, restano solo nel file dei progressi
+const keptNeeded = () => new Set([...Object.values(kept.start), ...Object.values(kept.after), ...kept.tappe, ...(TG ? state.photos.map((p) => p.key) : [])]);
 function renameKept(from, to) {
   for (const role of ["start", "after"]) for (const k of POSE_KEYS_ALL) if (kept[role][k] === from) kept[role][k] = to;
   kept.tappe = [...new Set(kept.tappe.map((x) => (x === from ? to : x)))];
@@ -3389,8 +3408,33 @@ startSheet.addEventListener("close", () => { startQueue = []; });
 
 // ---- foto salvate: elenco con il peso, per toglierne qualcuna (anche quando il file dei progressi diventa grande)
 const FILE_WARN_BYTES = 50e6; // oltre i 50 MB il file è scomodo da salvare e da spostare
+// Su Telegram il bot riscarica file fino a 20 MB: un po' di margine
+const TG_FILE_MAX = 19e6;
+const fileMax = () => TG ? TG_FILE_MAX : FILE_WARN_BYTES;
 const b64Size = (n) => Math.ceil(n / 3) * 4 + 300; // immagine dentro il file, con nome e data
 const mbText = (n) => n < 1e5 ? "meno di 0,1 MB" : `${num(n / 1e6, n < 1e7 ? 1 : 0)} MB`;
+// Su Telegram le foto vanno nel file ridotte (lato lungo 1000 px): così ce ne stanno un centinaio sotto TG_FILE_MAX.
+// I punti salvati si riscalano da soli quando la foto si riapre (dims)
+const TG_SIDE = 1000;
+async function shrinkImage(blob) {
+  const img = await createImageBitmap(blob);
+  const L = Math.max(img.width, img.height);
+  if (L <= TG_SIDE && blob.size <= 250e3) { img.close(); return blob; }
+  const s = Math.min(1, TG_SIDE / L), c = document.createElement("canvas");
+  c.width = Math.round(img.width * s);
+  c.height = Math.round(img.height * s);
+  c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+  img.close();
+  const out = await canvasBlob(c, "image/jpeg", 0.8);
+  c.width = c.height = 0;
+  return out;
+}
+// Le immagini che finiscono nel file dei progressi
+async function imagesForFile() {
+  const items = await savedImages();
+  if (TG) for (const it of items) it.blob = await shrinkImage(it.blob).catch(() => it.blob);
+  return items;
+}
 // Tutte le immagini salvate, una per foto: { key, name, date, stamp, blob, ref, kept }
 async function savedImages() {
   const refs = await allRecords("refs").catch(() => []);
@@ -3414,6 +3458,12 @@ async function removeSaved(items) {
         if (p) p.ref = false;
       }
       kept.tappe = kept.tappe.filter((x) => x !== it.key);
+    }
+    // Su Telegram ogni foto aperta resta salvata: per toglierla dal file la si toglie dall'elenco
+    if (TG) {
+      const gone = new Set(items.map((it) => it.key));
+      state.photos = state.photos.filter((q) => !gone.has(q.key));
+      if (state.selected && gone.has(state.selected.key)) state.selected = sorted()[0] || null;
     }
     saveKeptRoles();
     await updateKept(); // toglie le immagini che non servono più
@@ -3440,7 +3490,9 @@ async function openKept(mode, total = 0, other = 0) {
   };
   const sumAll = items.reduce((s, it) => s + it.blob.size, 0);
   $("#keptIntro").textContent = mode === "export"
-    ? `Il file dei progressi peserebbe circa ${mbText(total)}: oltre ${mbText(FILE_WARN_BYTES)} è scomodo da salvare e da spostare. Togli qualche foto salvata, o tienile tutte e salva lo stesso.`
+    ? TG
+      ? `Il file dei progressi peserebbe circa ${mbText(total)}: oltre ${mbText(TG_FILE_MAX)} il bot non riesce più a riaprirlo. Togli qualche foto, o tienile tutte e salva lo stesso.`
+      : `Il file dei progressi peserebbe circa ${mbText(total)}: oltre ${mbText(FILE_WARN_BYTES)} è scomodo da salvare e da spostare. Togli qualche foto salvata, o tienile tutte e salva lo stesso.`
     : `${countOf(items.length, "foto salvata", "foto salvate")} in questo browser, ${mbText(sumAll)}. Finiscono anche nel file dei progressi.`;
   $("#keptBody").innerHTML = items.length ? `<ul class="kept-list">${items.map((it, i) => {
     const fixed = keptFixed(it.key);
@@ -4255,20 +4307,7 @@ function renderGuide() {
   } else {
     drawGuide(ref, `Riferimento · ${labelOf(ref)}`);
     $("#guideFrame").hidden = false;
-    const f = framing(ref);
-    const steps = [
-      "<b>Stesso posto</b>: stesso specchio, stessa ora del giorno.",
-      f && `<b>Distanza</b>: le spalle prendono ${fracWords(f.width)} della larghezza della foto (${pctOf(f.width)}).`,
-      f && f.yFrom !== "shoulders" && `<b>Altezza</b>: ${Y_LABEL[f.yFrom]} ${f.yFrom === "neck" ? "sta" : "stanno"} al ${pctOf(f.y)} dall'alto, ${fracWords(f.y)} della foto.`,
-      settings.framing === "full"
-        ? `<b>Inquadratura</b>: dalla testa ai piedi${f?.feet ? `, i piedi al ${pctOf(f.feet)} dall'alto` : ""}.`
-        : "<b>Inquadratura</b>: dalla testa ai fianchi, sempre uguale.",
-      "<b>Telefono</b>: davanti al viso, dritto, fotocamera 1× e griglia accesa. Foto vera, non screenshot.",
-      f?.hand ? `<b>Altra mano</b>: nel riferimento è sul${f.hand === "belly" ? "la pancia" : " petto"}. Meglio lungo il fianco: se cambi, scegli un nuovo riferimento.`
-        : "<b>Altra mano</b>: lungo il fianco, lontana da petto e pancia.",
-      "<b>Busto</b>: dritto verso lo specchio, spalle e pancia rilassate.",
-      "<b>Quando</b>: a freddo, non subito dopo l'allenamento.",
-    ].filter(Boolean);
+    const steps = guideSteps(ref);
     const last = state.photos.filter((p) => p.pose === k && p !== ref && p.lm?.length).sort(byDate).pop();
     const tips = last ? coachTips(last, ref) : null;
     box.innerHTML = poseSelect
@@ -4288,6 +4327,24 @@ function renderGuide() {
     });
   }
   $("#guidePose")?.addEventListener("change", (e) => { state.guidePose = e.target.value; refresh(); });
+}
+
+// Come rifare la foto, coi numeri del riferimento. Righe in HTML (solo <b>): servono anche al promemoria di Telegram
+function guideSteps(ref) {
+  const f = framing(ref);
+  return [
+    "<b>Stesso posto</b>: stesso specchio, stessa ora del giorno.",
+    f && `<b>Distanza</b>: le spalle prendono ${fracWords(f.width)} della larghezza della foto (${pctOf(f.width)}).`,
+    f && f.yFrom !== "shoulders" && `<b>Altezza</b>: ${Y_LABEL[f.yFrom]} ${f.yFrom === "neck" ? "sta" : "stanno"} al ${pctOf(f.y)} dall'alto, ${fracWords(f.y)} della foto.`,
+    settings.framing === "full"
+      ? `<b>Inquadratura</b>: dalla testa ai piedi${f?.feet ? `, i piedi al ${pctOf(f.feet)} dall'alto` : ""}.`
+      : "<b>Inquadratura</b>: dalla testa ai fianchi, sempre uguale.",
+    "<b>Telefono</b>: davanti al viso, dritto, fotocamera 1× e griglia accesa. Foto vera, non screenshot.",
+    f?.hand ? `<b>Altra mano</b>: nel riferimento è sul${f.hand === "belly" ? "la pancia" : " petto"}. Meglio lungo il fianco: se cambi, scegli un nuovo riferimento.`
+      : "<b>Altra mano</b>: lungo il fianco, lontana da petto e pancia.",
+    "<b>Busto</b>: dritto verso lo specchio, spalle e pancia rilassate.",
+    "<b>Quando</b>: a freddo, non subito dopo l'allenamento.",
+  ].filter(Boolean);
 }
 
 // ------------------------------------------------------------------ impostazioni
@@ -4341,7 +4398,9 @@ function openSettings(first = false) {
       ${sec("definition", "Definizione", draft.definition ? "Accesa" : "Spenta",
         `<label class="switch"><span>Stima la definizione muscolare<small>Ombre fra i muscoli di petto, addome e schiena. Spegnila se fai le foto con la maglietta.</small></span><input type="checkbox" id="defInput" ${draft.definition ? "checked" : ""}></label>`)}
       ${sec("data", "I tuoi progressi", days < 0 ? "Mai salvati in un file" : days === 0 ? "Salvati oggi" : days === 1 ? "Salvati ieri" : `Salvati ${days} giorni fa`, `
-        <p class="note">Punti, misure, diario e impostazioni stanno solo in questo browser. Salvali in un file per non perderli o per passarli su un altro dispositivo. Nel file ci sono anche le foto salvate (riferimenti, partenza e Dopo); le altre no: quando apri il file, aggiungile di nuovo e i punti tornano.${MOBILE ? " Su iPhone Safari cancella i dati dei siti che non apri da una settimana: aggiungi la pagina alla schermata Home o salva spesso." : ""}</p>
+        <p class="note">${TG
+          ? "Sei dentro Telegram: Salva manda il file dei progressi nella chat col bot, con tutte le foto (ridotte). Riaprendo la pagina dalla chat, anche da un altro telefono, riparti da lì."
+          : `Punti, misure, diario e impostazioni stanno solo in questo browser. Salvali in un file per non perderli o per passarli su un altro dispositivo. Nel file ci sono anche le foto salvate (riferimenti, partenza e Dopo); le altre no: quando apri il file, aggiungile di nuovo e i punti tornano.${MOBILE ? " Su iPhone Safari cancella i dati dei siti che non apri da una settimana: aggiungi la pagina alla schermata Home o salva spesso." : ""}`}</p>
         <p class="note" id="keptLine">Foto salvate: …</p>
         <div class="data-actions">
           <button type="button" class="btn" id="exportBtn"><svg class="icon"><use href="#i-download"/></svg>Salva i progressi</button>
@@ -4352,8 +4411,11 @@ function openSettings(first = false) {
         <div class="data-actions">
           <button type="button" class="btn ghost danger-text" id="wipeBtn"><svg class="icon"><use href="#i-x"/></svg>Cancella tutto da questo browser</button>
         </div>`)}
-      ${sec("privacy", "Privacy", "Tutto resta qui",
-        `<p class="note">Le foto non lasciano mai questo dispositivo: si aprono e si analizzano qui. Niente account, cookie, statistiche o tracciamento. La pagina è bloccata dal browser e non può collegarsi ad altri siti${location.protocol === "file:" ? ", tranne i due da cui scarica le librerie" : ""}.</p>`)}`;
+      ${TG
+        ? sec("privacy", "Privacy", "Chat col bot",
+          `<p class="note">Su Telegram foto e file dei progressi stanno nella tua chat col bot, sui server di Telegram (le chat coi bot non sono cifrate end-to-end). Le foto si analizzano qui; quando salvi, il bot toglie dalla chat quelle già prese (se sono di meno di 48 ore fa) e restano solo nel file dei progressi.</p>`)
+        : sec("privacy", "Privacy", "Tutto resta qui",
+          `<p class="note">Le foto non lasciano mai questo dispositivo: si aprono e si analizzano qui. Niente account, cookie, statistiche o tracciamento. La pagina è bloccata dal browser e non può collegarsi ad altri siti${location.protocol === "file:" ? ", tranne i due da cui scarica le librerie" : ""}.</p>`)}`;
     dlg.querySelectorAll("[data-acc]").forEach((d) => d.addEventListener("toggle", () => { if (d.open) open.add(d.dataset.acc); else open.delete(d.dataset.acc); }));
     dlg.querySelectorAll('input[name="who"]').forEach((i) => i.addEventListener("change", () => {
       draft.who = i.value;
@@ -4464,14 +4526,14 @@ function savedPhotoEntries() {
 async function exportProgress() {
   const photos = savedPhotoEntries();
   const base = { app: "fitprogress", version: 1, exportedAt: new Date().toISOString(), settings, photos, diary, keptRoles: kept };
-  let items = await savedImages();
+  let items = await imagesForFile();
   // Peso del file prima di scriverlo: se è troppo, scegli tu cosa togliere
   const other = JSON.stringify(base).length;
   const total = other + items.reduce((s, it) => s + b64Size(it.blob.size), 0);
-  if (total > FILE_WARN_BYTES) {
+  if (total > fileMax()) {
     const r = await openKept("export", total, other);
     if (r === "cancel") return;
-    if (r === "removed") items = await savedImages();
+    if (r === "removed") items = await imagesForFile();
   }
   const meta = (it) => ({ key: it.key, name: it.name, date: it.date || "", stamp: it.stamp || "" });
   const refs = [], keptOut = [];
@@ -4485,6 +4547,7 @@ async function exportProgress() {
   const file = new File([json], `fitprogress-${todayISO()}.json`, { type: "application/json" });
   const n = Object.keys(photos).length;
   const what = savedWhat(n, diary.length, items.length);
+  if (TG) return tgSave(file, what);
   // Salvato davvero (condiviso o scaricato): solo allora si segna e si dice
   const done = () => {
     try { localStorage.setItem(LAST_EXPORT_KEY, String(Date.now())); } catch { /* spazio pieno */ }
@@ -4717,6 +4780,111 @@ function askWipe(then) {
   dlg.showModal();
 }
 
+// ------------------------------------------------------------------ Telegram: la chat col bot (vedi TG, in cima)
+
+const TG_JSON_KEY = "progressi.tgJson"; // l'ultimo file dei progressi della chat che questa pagina ha già
+const b64url = (s) => btoa(String.fromCharCode(...new TextEncoder().encode(s))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+// Il bot risponde sullo stesso indirizzo della pagina. Ogni richiesta porta i dati firmati da Telegram
+async function tgApi(path, opts = {}) {
+  const res = await fetch(`api/${path}`, { ...opts, credentials: "omit", headers: { Authorization: `tma ${TG.initData}`, ...opts.headers } });
+  if (!res.ok) throw new Error(`api ${res.status}`);
+  return res;
+}
+// Posa dalla didascalia della foto ("fronte", "lato", "schiena"): se c'è, vale come scelta tua
+function poseFromCaption(c) {
+  if (/\b(fronte|davanti|front)/i.test(c)) return "front";
+  if (/\b(lato|fianco|profilo|side)/i.test(c)) return "side";
+  if (/\b(schiena|dietro|retro|back)/i.test(c)) return "back";
+  return null;
+}
+const isoLocal = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+
+// All'apertura: script di Telegram (pronto, a tutto schermo), poi i progressi della chat
+async function tgStart() {
+  const wa = await new Promise((resolve) => {
+    const s = document.createElement("script");
+    s.src = "https://telegram.org/js/telegram-web-app.js";
+    s.onload = () => resolve(window.Telegram?.WebApp || null);
+    s.onerror = () => resolve(null);
+    document.head.append(s);
+  });
+  if (wa) {
+    wa.ready();
+    wa.expand();
+    if (wa.initData) TG.initData = wa.initData;
+  }
+  await tgSync();
+  if (!loadSettings()) openSettings(true);
+}
+// Ultimo file dei progressi (se è più nuovo di quello che c'è qui), foto e diario arrivati in chat
+async function tgSync() {
+  busyStart("Prendo i progressi dalla chat…");
+  try {
+    const st = await (await tgApi("state")).json();
+    if (st.json && st.json !== localStorage.getItem(TG_JSON_KEY)) {
+      const data = await (await tgApi("file?json=1")).json();
+      if (["fitprogress", "progressi"].includes(data?.app) && data.photos && typeof data.photos === "object") await importData(data);
+      try { localStorage.setItem(TG_JSON_KEY, st.json); } catch { /* spazio pieno */ }
+    }
+    const entries = Array.isArray(st.diary) ? st.diary : [];
+    const nDiary = entries.length ? mergeDiary(entries) : 0;
+    if (entries.length && (nDiary || !entries.some((e) => validDate(e.date)))) TG.consumed.diary.push(...entries.map((e) => e.id));
+    const files = [];
+    for (const [i, ph] of (Array.isArray(st.photos) ? st.photos : []).entries()) {
+      busyStep("Prendo le foto dalla chat", i + 1, st.photos.length);
+      try {
+        const blob = await (await tgApi(`file?photo=${encodeURIComponent(ph.id)}`)).blob();
+        const name = `telegram-${isoLocal(ph.date * 1000)}-${ph.id}.jpg`;
+        const pose = poseFromCaption(ph.caption || "");
+        // La posa scelta nella didascalia: makePhoto la ritrova come se l'avessi scelta tu
+        if (pose) try { localStorage.setItem(`progressi:${name}:${blob.size}`, JSON.stringify({ pose, poseSet: "user" })); } catch { /* spazio pieno */ }
+        files.push(new File([blob], name, { type: blob.type?.startsWith("image/") ? blob.type : "image/jpeg", lastModified: ph.date * 1000 }));
+      } catch { /* foto che non si scarica: si toglie lo stesso, se no torna sempre */ }
+      TG.consumed.photos.push(ph.id);
+    }
+    if (files.length) await addFiles(files);
+    const xs = [files.length && countOf(files.length, "foto", "foto"), nDiary && countOf(nDiary, "voce del diario", "voci del diario")].filter(Boolean);
+    if (xs.length) toast(`Dalla chat: ${xs.join(" e ")}. Quando hai finito tocca Salva.`);
+    if (nDiary) renderLog();
+  } catch {
+    toast("Non riesco a parlare col bot. Riapri la pagina dal pulsante nella chat.");
+  } finally {
+    busyEnd();
+  }
+}
+// Promemoria del bot: come rifare la foto, coi numeri del riferimento (di fronte, se c'è)
+function tgGuide() {
+  const k = POSE_KEYS.find((q) => refFor(q));
+  return k ? { pose: POSES[k].label, lines: guideSteps(refFor(k)) } : null;
+}
+// Salva su Telegram: il file va al bot, che lo manda nella chat e toglie dalla chat le foto già prese
+async function tgSave(file, what) {
+  try {
+    const res = await tgApi("save", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-FP-Photos": TG.consumed.photos.join(","),
+        "X-FP-Diary": TG.consumed.diary.join(","),
+        "X-FP-Note": b64url(what),
+        "X-FP-Guide": b64url(JSON.stringify(tgGuide())),
+      },
+      body: file,
+    });
+    const { json } = await res.json();
+    TG.consumed = { photos: [], diary: [] };
+    try {
+      localStorage.setItem(TG_JSON_KEY, json);
+      localStorage.setItem(LAST_EXPORT_KEY, String(Date.now()));
+    } catch { /* spazio pieno */ }
+    toast("Salvato nella chat");
+    return true;
+  } catch {
+    toast("Non riesco a mandare il file nella chat. Riprova fra poco.");
+    return false;
+  }
+}
+
 // ------------------------------------------------------------------ diario: peso e misure col metro
 //
 // Una misurazione per giorno, anche senza foto. Sta in localStorage (una sola chiave, fuori da "progressi:"
@@ -4739,6 +4907,13 @@ const DIARY_FIELDS = {
   calf: { name: "Polpaccio", unit: "cm", min: 10, max: 300 },
 };
 const DIARY_IDS = Object.keys(DIARY_FIELDS);
+// Testo libero, giorno per giorno: arrivano anche dal bot di Telegram ("gambe 60 min", "cena ieri: pizza")
+const DIARY_TEXT = {
+  workout: { name: "Allenamento", max: 200 },
+  meal: { name: "Pasto", max: 300 },
+};
+const DIARY_TEXT_IDS = Object.keys(DIARY_TEXT);
+const hasDiaryData = (e) => DIARY_IDS.some((id) => e[id] != null) || DIARY_TEXT_IDS.some((id) => e[id]);
 // 78 kg, 78,4 kg, 18,5%
 const fmtVal = (v) => num(v, 1).replace(/,0$/, "");
 const withUnit = (v, f) => f.unit === "%" ? `${fmtVal(v)}%` : `${fmtVal(v)} ${f.unit}`;
@@ -4754,8 +4929,9 @@ function cleanDiary(v) {
       const f = DIARY_FIELDS[id], n = e[id];
       if (typeof n === "number" && Number.isFinite(n) && n >= f.min && n <= f.max) out[id] = Math.round(n * 10) / 10;
     }
+    for (const id of DIARY_TEXT_IDS) if (typeof e[id] === "string" && e[id].trim()) out[id] = e[id].trim().slice(0, DIARY_TEXT[id].max);
     if (typeof e.note === "string" && e.note.trim()) out.note = e.note.trim().slice(0, 200);
-    if (DIARY_IDS.some((id) => out[id] != null)) byDate.set(e.date, out);
+    if (hasDiaryData(out)) byDate.set(e.date, out);
   }
   return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)).slice(-DIARY_MAX);
 }
@@ -4773,6 +4949,32 @@ function saveDiary() {
 }
 let diary = loadDiary();
 let logEditing = null; // data della misurazione che stai modificando, o null se è nuova
+
+// Voci arrivate da fuori (il bot di Telegram), una per campo: [{ date, field, value }]. Le misure prendono il posto
+// di quelle del giorno, allenamento e pasto si aggiungono a quello che c'è già. Risponde quante voci ha preso
+function mergeDiary(items) {
+  const byDate = new Map(diary.map((e) => [e.date, { ...e }]));
+  let n = 0;
+  for (const { date, field, value } of items) {
+    if (!validDate(date)) continue;
+    const e = byDate.get(date) || { date };
+    if (DIARY_FIELDS[field]) {
+      const v = +value, f = DIARY_FIELDS[field];
+      if (!(v >= f.min && v <= f.max)) continue;
+      e[field] = Math.round(v * 10) / 10;
+    } else if (DIARY_TEXT[field] && typeof value === "string" && value.trim()) {
+      const t = value.trim();
+      if (!(e[field] || "").includes(t)) e[field] = e[field] ? `${e[field]} · ${t}` : t;
+    } else continue;
+    byDate.set(date, e);
+    n++;
+  }
+  if (!n) return 0;
+  const before = diary;
+  diary = cleanDiary([...byDate.values()]);
+  if (!saveDiary()) { diary = before; return 0; }
+  return n;
+}
 
 // Il modulo si costruisce una volta sola
 {
@@ -4795,20 +4997,20 @@ function showLogError(msg, bad = []) {
     logInput(bad[0]).focus();
   }
 }
-const logEls = () => [...DIARY_IDS.map((id) => [id, logInput(id)]), ["note", $("#logNote")]];
+const logEls = () => [...DIARY_IDS.map((id) => [id, logInput(id)]), ...DIARY_TEXT_IDS.map((id) => [id, logInput(id)]), ["note", $("#logNote")]];
 // Mette nel modulo i valori della misurazione e (null: vuoti). Quello che hai scritto tu resta: si cambiano
 // solo i campi uguali a com'erano stati caricati (data-loaded). clear: svuota tutto
 function fillLogForm(e, clear = false) {
   for (const [id, el] of logEls()) {
     if (!clear && el.value !== (el.dataset.loaded ?? "")) continue;
-    el.value = e?.[id] == null ? "" : id === "note" ? e.note : fmtVal(e[id]);
+    el.value = e?.[id] == null ? "" : DIARY_FIELDS[id] ? fmtVal(e[id]) : e[id];
     el.dataset.loaded = el.value;
   }
   if (DIARY_IDS.some((id) => !DIARY_FIELDS[id].main && logInput(id).value)) $("#logMore").open = true;
 }
 function updateLogHead() {
   $("#logFormTitle").textContent = logEditing ? `Misurazione del ${fmtDate(logEditing)}` : "Nuova misurazione";
-  $("#logFormSub").textContent = logEditing ? "Cambia i valori e aggiorna, o scegli un'altra data." : "Tutto facoltativo, tranne la data e almeno una misura.";
+  $("#logFormSub").textContent = logEditing ? "Cambia i valori e aggiorna, o scegli un'altra data." : "Tutto facoltativo, tranne la data e almeno una misura, l'allenamento o il pasto.";
   $("#logSave").textContent = logEditing ? "Aggiorna" : "Salva";
   $("#logDelete").hidden = !logEditing;
 }
@@ -4838,6 +5040,10 @@ function readLogForm() {
     if (n >= f.min && n <= f.max) entry[id] = Math.round(n * 10) / 10;
     else bad.push(id);
   }
+  for (const id of DIARY_TEXT_IDS) {
+    const t = logInput(id).value.trim().slice(0, DIARY_TEXT[id].max);
+    if (t) entry[id] = t;
+  }
   const note = $("#logNote").value.trim().slice(0, 200);
   if (note) entry.note = note;
   return { entry, bad };
@@ -4852,7 +5058,7 @@ $("#logForm").addEventListener("submit", (ev) => {
     showLogError(`Controlla ${bad.map((id) => { const f = DIARY_FIELDS[id]; return `${f.name.toLowerCase()} (fra ${f.min} e ${f.max} ${f.unit})`; }).join(", ")}.`, bad);
     return;
   }
-  if (!DIARY_IDS.some((id) => entry[id] != null)) { showLogError("Scrivi almeno una misura."); logInput("weight").focus(); return; }
+  if (!hasDiaryData(entry)) { showLogError("Scrivi almeno una misura, l'allenamento o il pasto."); logInput("weight").focus(); return; }
   const existed = diary.some((x) => x.date === entry.date), before = diary;
   diary = cleanDiary([...diary.filter((x) => x.date !== entry.date), entry]);
   if (!saveDiary()) { diary = before; return; }
@@ -4915,7 +5121,7 @@ function renderLogHistory() {
     return `<li ${e.date === logEditing ? 'aria-current="true"' : ""}>
       <button type="button" class="log-entry" data-edit="${e.date}" aria-label="Modifica la misurazione del ${fmtDate(e.date)}">
         <span class="top"><span class="d">${fmtDate(e.date)}</span>${delta}</span>
-        <span class="vals">${esc(vals)}</span>${e.note ? `<span class="why">${esc(e.note)}</span>` : ""}
+        ${vals ? `<span class="vals">${esc(vals)}</span>` : ""}${DIARY_TEXT_IDS.filter((id) => e[id]).map((id) => `<span class="why">${esc(`${DIARY_TEXT[id].name}: ${e[id]}`)}</span>`).join("")}${e.note ? `<span class="why">${esc(e.note)}</span>` : ""}
       </button>
       <button type="button" class="btn ghost icon-only" data-edit="${e.date}" aria-label="Modifica la misurazione del ${fmtDate(e.date)}" title="Modifica"><svg class="icon"><use href="#i-pencil"/></svg></button>
       <button type="button" class="btn ghost icon-only" data-del="${e.date}" aria-label="Elimina la misurazione del ${fmtDate(e.date)}" title="Elimina"><svg class="icon"><use href="#i-x"/></svg></button>
@@ -5075,10 +5281,20 @@ window.addEventListener("drop", (e) => {
 
 // Sul telefono anche l'analisi parte chiusa: il riassunto dice già com'è andata, si apre a richiesta
 if (MOBILE) $("#accAnalysis").open = false;
+// Dentro Telegram le foto passano dalla chat col bot: i testi che dicono il contrario cambiano
+if (TG) {
+  $(".busy-note").textContent = "Le foto passano dalla tua chat col bot di Telegram.";
+  $(".drop p").textContent = "JPG, PNG, HEIC e screenshot. Oppure mandale al bot nella chat: le trovi qui.";
+}
 updateSaveBtn();
 refresh();
-loadSaved().then(() => { refresh(); processQueue(); });
-if (!settingsSaved) openSettings(true);
+loadSaved().then(async () => {
+  refresh();
+  // Su Telegram le impostazioni possono arrivare col file della chat: la prima finestra aspetta
+  if (TG) await tgStart();
+  processQueue();
+});
+if (!settingsSaved && !TG) openSettings(true);
 </script>
 </body>
 </html>

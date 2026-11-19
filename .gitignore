@@ -12,3 +12,11 @@
 gym/
 
 .DS_Store
+
+# Bot Telegram: questi JSON servono (gli altri no, vedi sopra)
+!telegram/package.json
+!telegram/package-lock.json
+node_modules/
+telegram/public/
+telegram/.wrangler/
+telegram/.dev.vars
