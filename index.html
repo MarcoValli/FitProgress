@@ -396,8 +396,8 @@
         <p class="empty-links"><button type="button" class="link" id="importLink">Ho già un file dei progressi</button> · <button type="button" class="link" id="tipsLink">Come fare le foto</button></p>
       </div>
       <div class="how">
-        <div><b>1 · Posa e data</b><span>Data dal nome del file (2026-01-10.png) o a mano.</span></div>
-        <div><b>2 · Allinea</b><span id="howAlign">I punti li trovo io, tu li controlli.</span></div>
+        <div><b>1 · Aggiungi le foto</b><span>Di fronte, di lato o di schiena: le riconosco io. La data dal nome del file o dalla foto.</span></div>
+        <div><b>2 · Allinea</b><span id="howAlign">Posa, punti e misure li trovo io.</span></div>
         <div><b>3 · Confronta</b><span>Cursore, affiancate o in trasparenza.</span></div>
       </div>
     </div>
@@ -607,7 +607,7 @@ const SIDE_SCHEMES = {
 };
 // Come si trovano i punti per allineare
 const DETECTS = {
-  auto: { label: "Automatico", sub: "Trovo io i punti in tutte le foto, anche nella prima. Tu li controlli" },
+  auto: { label: "Automatico", sub: "Riconosco da solo posa, punti e misure in tutte le foto. Se qualcosa è fuori posto lo trascini" },
   manual: { label: "Manuale", sub: "Nella prima foto di ogni posa scegli quali punti usare e li metti tu. Le altre le allineo io" },
 };
 // Pose che si possono allineare con punti diversi: la scelta sta in settings[key]
@@ -898,6 +898,7 @@ async function makePhoto(key, name, baseBlob, date, stamp = "", legacyK = 1) {
     flip: saved?.flip ?? false, bright: saved?.bright ?? 0, contrast: saved?.contrast ?? 0,
     align: saved?.align ?? [], meas: saved?.meas ?? migrateMeasure(saved), noThird: saved?.noThird ?? false,
     use: saved?.use ?? null, auto: saved?.auto ?? null, lm: saved?.lm ?? null, tweak: saved?.tweak ?? null,
+    poseSet: saved?.poseSet ?? false, measHand: saved?.measHand ?? false,
     ref: state.refKeys.has(key),
   };
   // Punti messi con l'altra scelta (di fronte: capezzoli / collo e ombelico; di lato: capezzolo / petto): da rifare
@@ -956,6 +957,7 @@ async function addFiles(files) {
   else if (failed.length) toast(`Non riesco ad aprire ${failed.join(", ")}.`);
   else if (added) toast(added === 1 ? "1 foto aggiunta" : `${added} foto aggiunte`);
   if (added) navigator.storage?.persist?.().catch(() => {});
+  if (added) state.goCompare = true; // in automatico, finito il lavoro si apre il confronto
   refresh();
   processQueue();
 }
@@ -1021,9 +1023,9 @@ async function loadRefs() {
 }
 
 function save(p) {
-  const { date, pose, flip, bright, contrast, align, meas, noThird, use, auto, lm, tweak, stamp } = p;
+  const { date, pose, flip, bright, contrast, align, meas, noThird, use, auto, lm, tweak, stamp, poseSet, measHand } = p;
   const { scheme, sideScheme } = settings, dims = [p.w, p.h];
-  try { localStorage.setItem(p.key, JSON.stringify({ date, pose, flip, bright, contrast, align, meas, noThird, use, auto, lm, tweak, scheme, sideScheme, dims, stamp })); } catch { /* spazio pieno */ }
+  try { localStorage.setItem(p.key, JSON.stringify({ date, pose, flip, bright, contrast, align, meas, noThird, use, auto, lm, tweak, scheme, sideScheme, dims, stamp, poseSet, measHand })); } catch { /* spazio pieno */ }
 }
 
 // Foto con specchio, luce e contrasto applicati. I punti sono in queste coordinate.
@@ -1150,26 +1152,76 @@ const mapMeas = (p, f) => { p.meas = Object.fromEntries(Object.entries(p.meas).m
 
 // ------------------------------------------------------------------ riconoscimento della posa (MediaPipe)
 
-let poser = null;
+// Con la sagoma della persona (maschera), che serve per le misure automatiche e per il bordo del corpo di lato.
+// La sagoma funziona solo sulla scheda grafica (GPU): se lì non parte, si usa il processore senza sagoma
+let poser = null, poserFiles = null, poserGpu = true;
 function loadPoser() {
   poser ??= (async () => {
-    const [mod, wasmLoaderPath, wasmBinaryPath, model] = await Promise.all([
+    poserFiles ??= await Promise.all([
       blobUrl("vision").then((u) => import(u)), blobUrl("visionLoader"), blobUrl("visionWasm"), fetchChecked("poseModel"),
     ]);
-    return mod.PoseLandmarker.createFromOptions({ wasmLoaderPath, wasmBinaryPath }, {
-      baseOptions: { modelAssetBuffer: new Uint8Array(model), delegate: "CPU" }, runningMode: "IMAGE", numPoses: 1,
+    const [mod, wasmLoaderPath, wasmBinaryPath, model] = poserFiles;
+    const make = (gpu) => mod.PoseLandmarker.createFromOptions({ wasmLoaderPath, wasmBinaryPath }, {
+      baseOptions: { modelAssetBuffer: new Uint8Array(model), delegate: gpu ? "GPU" : "CPU" }, runningMode: "IMAGE", numPoses: 1, outputSegmentationMasks: gpu,
     });
+    if (poserGpu) {
+      try { return await make(true); } catch { poserGpu = false; }
+    }
+    return make(false);
   })().catch((e) => { poser = null; throw e; });
   return poser;
+}
+async function runPoser(img) {
+  try {
+    return (await loadPoser()).detect(img);
+  } catch (e) {
+    if (!poserGpu) throw e;
+    // La scheda grafica non regge: si riparte col processore, senza sagoma
+    poserGpu = false;
+    poser = null;
+    return (await loadPoser()).detect(img);
+  }
 }
 
 // Punti del corpo (coordinate della foto, con lo specchio già applicato): [x, y, visibilità]
 const LM = { nose: 0, shoulders: [11, 12], hips: [23, 24], hands: [[15, 17, 19, 21], [16, 18, 20, 22]] };
 async function detectPose(p) {
-  const res = (await loadPoser()).detect(p.proc);
+  const res = await runPoser(p.proc);
   const lm = res.landmarks?.[0];
   p.lm = lm ? lm.map((q) => [Math.round(q.x * p.proc.width), Math.round(q.y * p.proc.height), Math.round((q.visibility ?? 1) * 100) / 100]) : [];
+  // Profondità (z) delle spalle e delle anche: di lato una spalla è molto più vicina dell'altra
+  p.lmz = lm ? [11, 12, 23, 24].map((i) => lm[i].z * p.proc.width) : null;
+  const mask = res.segmentationMasks?.[0];
+  p.sil = mask && lm ? silhouetteOf(mask.getAsFloat32Array(), mask.width, mask.height, p.proc.width, p.proc.height) : null;
+  res.segmentationMasks?.forEach((m) => m.close());
   save(p);
+}
+
+// Sagoma: per ogni riga i tratti [inizio, fine) occupati dalla persona, in pixel della foto. Resta solo in memoria
+function silhouetteOf(data, mw, mh, W, H) {
+  const rows = new Array(H);
+  for (let y = 0; y < H; y++) {
+    const my = Math.min(mh - 1, Math.floor(y * mh / H)), o = my * mw, segs = [];
+    let start = -1;
+    for (let mx = 0; mx <= mw; mx++) {
+      const on = mx < mw && data[o + mx] > 0.5;
+      if (on && start < 0) start = mx;
+      else if (!on && start >= 0) { segs.push(Math.round(start * W / mw), Math.round(mx * W / mw)); start = -1; }
+    }
+    rows[y] = Int16Array.from(segs);
+  }
+  return { W, H, rows };
+}
+// Il tratto della riga y che contiene x (o il più vicino, entro maxGap): [x0, x1] o null
+function segAt(sil, y, x, maxGap = Infinity) {
+  const r = sil.rows[Math.round(y)];
+  if (!r) return null;
+  let best = null, bd = Infinity;
+  for (let i = 0; i < r.length; i += 2) {
+    const d = x < r[i] ? r[i] - x : x >= r[i + 1] ? x - r[i + 1] + 1 : 0;
+    if (d < bd) { bd = d; best = [r[i], r[i + 1]]; }
+  }
+  return bd <= maxGap ? best : null;
 }
 const seen = (p, i) => p.lm?.[i] && p.lm[i][2] > 0.5;
 const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
@@ -1401,9 +1453,9 @@ function autoAlignFrom(p, src) {
 
 const refFor = (k) => state.photos.filter((q) => q.ref && q.pose === k).sort(byDate)[0] || null;
 
-// Foto da cui partire per una posa: i riferimenti, poi le foto allineate a mano
+// Foto da cui partire per una posa: i riferimenti, poi le foto allineate a mano o la prima foto trovata in automatico
 function anchorsFor(k) {
-  const manual = state.photos.filter((q) => q.pose === k && q.align.length >= 2 && !q.auto && q.lm?.length).sort(byDate);
+  const manual = state.photos.filter((q) => q.pose === k && q.align.length >= 2 && (!q.auto || q.auto.seed) && q.lm?.length).sort(byDate);
   const refs = manual.filter((q) => q.ref);
   return (refs.length ? refs : [manual[0], manual[manual.length - 1]]).filter((q, i, a) => q && a.indexOf(q) === i).slice(0, 2);
 }
@@ -1415,7 +1467,13 @@ function autoAlign(p) {
     const r = autoAlignFrom(p, a);
     if (r && (!best || (r.sure && !best.sure) || (r.sure === best.sure && r.conf > best.conf))) best = r;
   }
-  if (!best || best.conf < 0.3) return false;
+  // In automatico la foto si guarda anche da sola: se i pettorali spiccano bene, i punti trovati qui sono più precisi
+  // di quelli portati da un'altra foto (che può avere la maglietta o un'altra luce)
+  if (settings.detect === "auto" && (!best?.sure || best.conf < 0.3)) {
+    const own = seedAlign(p);
+    if (own && ((POSES[p.pose].pair && own.conf >= 0.5) || !best || best.conf < 0.3)) best = { align: own.align, conf: own.conf, sure: own.conf >= 0.5 };
+  }
+  if (!best || best.conf < 0.25) return false;
   p.align = best.align;
   p.noThird = best.align.length < 3;
   p.auto = { conf: best.conf, sure: best.sure };
@@ -1428,6 +1486,9 @@ function autoAlign(p) {
 // Posizioni lungo il busto, misurate su foto di prova: y in frazioni della distanza spalle → anche (T, dal centro delle
 // spalle), x dei capezzoli in frazioni della larghezza delle spalle. Sono stime: la foto resta "da controllare".
 const SEED = { nipY: 0.26, nipX: 0.29, navelY: 0.715, neckY: -0.09, c7Y: -0.06, lowBackY: 0.67, chestY: 0.26 };
+// Contrasto delle macchie: sotto il primo non sono capezzoli (pieghe della maglietta), sopra il secondo sono nitide.
+// Misurato su foto di prova: a petto nudo 4–60, con la maglietta 1–2.5
+const SEED_ISO = [3.5, 12];
 
 function torsoAxis(p) {
   const pts = (ids) => ids.filter((i) => seen(p, i)).map((i) => [p.lm[i][0], p.lm[i][1]]);
@@ -1452,8 +1513,25 @@ function spotNear(cm, k, pred, radius) {
   return [best[0] / k, best[1] / k];
 }
 
-// Bordo del corpo lungo una riga (di lato): il salto di luce più forte andando dal busto verso dove guarda
+// Posa della foto (di fronte, di lato, di schiena) dalla posizione di spalle e anche.
+// Di lato le spalle si sovrappongono; di schiena la spalla sinistra della persona sta a sinistra nella foto
+function classifyPose(p) {
+  const L = p.lm;
+  if (!L?.length || !L[24]) return null;
+  const s = mid(L[11], L[12]), h = mid(L[23], L[24]), T = dist(s, h);
+  if (T < 30) return null;
+  const sh = (L[11][0] - L[12][0]) / T, hp = (L[23][0] - L[24][0]) / T;
+  const dz = p.lmz ? Math.abs(p.lmz[0] - p.lmz[1]) / T : 0;
+  if (Math.abs(sh) < 0.35 || (dz > 0.8 && Math.abs(sh) < 0.5)) return "side";
+  return sh + hp > 0 ? "front" : "back";
+}
+
+// Bordo del corpo lungo una riga (di lato): dalla sagoma se c'è, se no il salto di luce più forte andando verso dove guarda
 function bodyEdge(p, from, dir, maxLen) {
+  if (p.sil && Math.abs(dir[1]) < 0.3) {
+    const sg = segAt(p.sil, from[1], from[0], maxLen * 0.05);
+    if (sg) { const t = (dir[0] > 0 ? sg[1] - from[0] : from[0] - sg[0]) / Math.abs(dir[0]); if (t > maxLen * 0.05 && t < maxLen) return t; }
+  }
   const k = Math.min(1, 200 / maxLen), im = workCopy(p, k);
   let best = null, prev = null;
   for (let t = maxLen * 0.08; t <= maxLen; t += 1 / k) {
@@ -1470,20 +1548,28 @@ function seedAlign(p) {
   if (!ax) return null;
   const { at, T, sw } = ax;
   const round = (pts) => pts.map((q) => q.map((v) => Math.round(v * 10) / 10));
+  // Centro del corpo sulla riga: dalla sagoma (il busto è simmetrico), se no lungo l'asse fra spalle e anche
+  const centered = (q) => {
+    const sg = p.sil && segAt(p.sil, q[1], q[0], T * 0.05);
+    return sg && sg[1] - sg[0] < T * 1.6 && Math.abs((sg[0] + sg[1]) / 2 - q[0]) < T * 0.12 ? [(sg[0] + sg[1]) / 2, q[1]] : q;
+  };
   if (p.pose === "front" || p.pose === "back") {
     if (!ax.pair) return null;
-    if (p.pose === "back") return { align: round([at(0, SEED.c7Y), at(0, SEED.lowBackY)]), conf: 0.4 };
+    if (p.pose === "back") return { align: round([centered(at(0, SEED.c7Y)), centered(at(0, SEED.lowBackY))]), conf: 0.5 };
     const nipD = 2 * SEED.nipX * sw, k = WORK / nipD;
     const cm = colorCopy(p.proc, k);
-    const navelGuess = at(0, SEED.navelY);
+    const navelGuess = centered(at(0, SEED.navelY));
     const navel = handSpot(p) === "belly" ? null : spotNear(cm, k, navelGuess, T * 0.09);
-    if (settings.scheme === "neckNavel") return { align: round([at(0, SEED.neckY), navel || navelGuess]), conf: navel ? 0.5 : 0.35 };
+    if (settings.scheme === "neckNavel") return { align: round([centered(at(0, SEED.neckY)), navel || navelGuess]), conf: navel ? 0.5 : 0.35 };
     const pred = [at(-SEED.nipX * sw, SEED.nipY), at(SEED.nipX * sw, SEED.nipY)].map((q) => q.map((v) => v * k));
     const bp = bestPair(blobCandidates(cm, pred, WORK * 0.5), pred[0], pred[1]);
     // La coppia trovata deve somigliare a una coppia di capezzoli: distanza e inclinazione vicine alla stima
     const ok = bp && Math.abs(Math.log(dist(bp.L, bp.R) / WORK)) < 0.35 && Math.abs(Math.atan2(bp.R[1] - bp.L[1], bp.R[0] - bp.L[0]) - Math.atan2(pred[1][1] - pred[0][1], pred[1][0] - pred[0][0])) < 0.2;
-    const nips = (ok ? [bp.L, bp.R] : pred).map((q) => [q[0] / k, q[1] / k]);
-    return { align: round(navel ? [...nips, navel] : nips), conf: ok ? 0.6 : 0.3, noThird: !navel };
+    // Le due macchie devono spiccare sulla pelle intorno: con la maglietta si trovano solo pieghe deboli
+    // (contrasto sotto 3) e la stima dalla posa è migliore
+    const iso = bp ? Math.min(bp.L[2], bp.R[2]) : 0, found = ok && iso >= SEED_ISO[0];
+    const nips = (found ? [bp.L, bp.R] : pred).map((q) => [q[0] / k, q[1] / k]);
+    return { align: round(navel ? [...nips, navel] : nips), conf: found ? (iso >= SEED_ISO[1] ? 0.6 : 0.5) : 0.3, noThird: !navel };
   }
   // Di lato: si guarda dalla parte del naso; i punti stanno sul davanti del busto, appena dentro il bordo
   const nose = seen(p, LM.nose) ? p.lm[LM.nose] : null;
@@ -1499,8 +1585,179 @@ function seedAlign(p) {
   const k = WORK / (T * 0.42), cm = colorCopy(p.proc, k);
   if (settings.sideScheme === "nipple") first = spotNear(cm, k, chest.pt, T * 0.07) || first;
   if (handSpot(p) !== "belly") navel = spotNear(cm, k, belly.pt, T * 0.06) || navel;
-  return { align: round([first, navel]), conf: chest.found && belly.found ? 0.4 : 0.25 };
+  return { align: round([first, navel]), conf: chest.found && belly.found ? (p.sil ? 0.5 : 0.4) : 0.25 };
 }
+
+// ---- misure automatiche dalla sagoma
+//
+// Larghezze lungo righe orizzontali del busto (di lato: profondità davanti-dietro). Se un braccio o una mano
+// toccano il corpo su quella riga la misura non è affidabile: si prova un'altra riga o si lascia a te.
+function limbLines(p) {
+  const pt = (i) => p.lm[i] && p.lm[i][2] > 0.3 ? [p.lm[i][0], p.lm[i][1]] : null;
+  const chain = (ids) => ids.map(pt).filter(Boolean);
+  // Gambe: anca, ginocchio, caviglia sempre in quest'ordine (null se non si vede)
+  return { arms: [chain([11, 13, 15, 19]), chain([12, 14, 16, 20])], legs: [[23, 25, 27].map(pt), [24, 26, 28].map(pt)] };
+}
+// x della linea (spalla-gomito-polso…) alla riga y, o null se la linea non arriva a quella riga
+function lineX(points, y) {
+  const line = points.filter(Boolean);
+  for (let i = 0; i + 1 < line.length; i++) {
+    const [a, b] = [line[i], line[i + 1]];
+    if ((y - a[1]) * (y - b[1]) <= 0 && a[1] !== b[1]) return a[0] + (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]);
+  }
+  return null;
+}
+
+// Luminosità della foto, un byte per pixel: per cercare il bordo fra braccio e busto
+function lumaOf(p) {
+  const W = p.proc.width, H = p.proc.height, c = document.createElement("canvas");
+  c.width = W; c.height = H;
+  const ctx = c.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(p.proc, 0, 0);
+  const d = ctx.getImageData(0, 0, W, H).data, out = new Uint8Array(W * H);
+  for (let i = 0; i < W * H; i++) out[i] = (d[i * 4] * 77 + d[i * 4 + 1] * 150 + d[i * 4 + 2] * 29) >> 8;
+  c.width = c.height = 0;
+  return { W, H, d: out };
+}
+// Il bordo più netto fra xa e xb sulla riga y (media di qualche riga, per togliere il rumore)
+function edgeBetween(lu, y, xa, xb) {
+  const a = Math.max(2, Math.round(Math.min(xa, xb))), b = Math.min(lu.W - 3, Math.round(Math.max(xa, xb)));
+  if (b - a < 4) return null;
+  const prof = [];
+  for (let x = a - 2; x <= b + 2; x++) {
+    let s = 0, n = 0;
+    for (let dy = -4; dy <= 4; dy++) { const yy = Math.round(y) + dy; if (yy >= 0 && yy < lu.H) { s += lu.d[yy * lu.W + x]; n++; } }
+    prof.push(n ? s / n : 0);
+  }
+  let best = null;
+  for (let i = 2; i < prof.length - 2; i++) {
+    const g = Math.abs(prof[i + 2] + prof[i + 1] - prof[i - 1] - prof[i - 2]);
+    if (!best || g > best.g) best = { g, x: a - 2 + i };
+  }
+  return best && best.g > 12 ? best.x : null;
+}
+
+function autoMeasures(p) {
+  const sil = p.sil, ax = torsoAxis(p);
+  if (!sil || !ax) return {};
+  const { at, T } = ax, sw = ax.sw || T * 0.7, limbs = limbLines(p), k = p.pose;
+  const lr = POSES[k].lr;
+  let lu = null;
+  // Il tratto del busto sulla riga a uy (frazioni di T dalle spalle). Se un braccio è attaccato al busto (stesso tratto
+  // della sagoma) il bordo del busto si cerca sull'immagine, fra il braccio e il centro. split: false prende la sagoma
+  // così com'è (spalle, profilo di lato)
+  const row = (uy, split = true) => {
+    const c = at(0, uy), sg = segAt(sil, c[1], c[0], T * 0.04);
+    if (!sg) return null;
+    let [x0, x1] = sg, est = false;
+    for (const arm of limbs.arms) {
+      const x = lineX(arm, c[1]);
+      if (!split || x == null || x <= sg[0] + T * 0.02 || x >= sg[1] - T * 0.02) continue;
+      lu ??= lumaOf(p);
+      // Il bordo sta fra il centro del braccio e il busto: il braccio è largo circa 0.1–0.2 T
+      const e = x < c[0] ? edgeBetween(lu, c[1], x + T * 0.03, Math.min(c[0] - T * 0.12, x + T * 0.22)) : edgeBetween(lu, c[1], Math.max(c[0] + T * 0.12, x - T * 0.22), x - T * 0.03);
+      if (e == null) return null;
+      if (x < c[0]) x0 = e; else x1 = e;
+      est = true;
+    }
+    return { y: c[1], x0, x1, w: x1 - x0, est };
+  };
+  // Righe fra u0 e u1; la larghezza si smussa con la mediana di 5 righe vicine, così un bordo sbagliato non vince
+  const scan = (u0, u1, better, split) => {
+    const rows = [];
+    for (let uy = u0; uy <= u1 + 1e-9; uy += 0.01) { const r = row(uy, split); if (r) rows.push(r); }
+    let best = null;
+    rows.forEach((r, i) => {
+      const w = median(rows.slice(Math.max(0, i - 2), i + 3).map((q) => q.w));
+      if (Math.abs(r.w - w) > T * 0.03) return;
+      if (!best || better(w, best.sw)) best = { ...r, sw: w };
+    });
+    return best;
+  };
+  const widest = (u0, u1, split) => scan(u0, u1, (a, b) => a > b, split);
+  const narrowest = (u0, u1) => scan(u0, u1, (a, b) => a < b, true);
+  const at1 = (uy) => row(uy) || scan(uy - 0.04, uy + 0.04, (a, b) => Math.abs(a.y - at(0, uy)[1]) < Math.abs(b.y - at(0, uy)[1]), true);
+  const uyOf = (y) => (y - ax.s[1]) / T;
+  // Righe dei punti di allineamento, quando ci sono (ombelico, petto)
+  const navelY = k === "front" ? (POSES.front.pair ? p.align[2]?.[1] : p.align[1]?.[1]) : k === "side" ? p.align[1]?.[1] : null;
+  const chestY = k === "front" && POSES.front.pair && p.align.length >= 2 ? (p.align[0][1] + p.align[1][1]) / 2 : k === "side" ? p.align[0]?.[1] : null;
+  const uNavel = navelY ? uyOf(navelY) : SEED.navelY, uChest = chestY ? uyOf(chestY) : SEED.nipY;
+  const female = settings.who === "female";
+
+  // Una gamba sola (non le due insieme) fra due frazioni del tratto anca-ginocchio o ginocchio-caviglia
+  const leg = (from, to, f0, f1, pick) => {
+    for (const line of limbs.legs) {
+      const a = line[from], b = line[to];
+      if (!a || !b) continue;
+      let best = null;
+      for (let f = f0; f <= f1 + 1e-9; f += 0.02) {
+        const y = a[1] + (b[1] - a[1]) * f, x = a[0] + (b[0] - a[0]) * f, sg = segAt(sil, y, x, T * 0.03);
+        if (!sg) continue;
+        // Le due gambe nello stesso tratto: si toccano, non è una gamba sola
+        if (limbs.legs.filter((l) => { const lx = lineX(l, y); return lx != null && lx > sg[0] && lx < sg[1]; }).length > 1) continue;
+        const r = { y, x0: sg[0], x1: sg[1], w: sg[1] - sg[0] };
+        if (!best || pick(r, best)) best = r;
+        if (pick === "first") return r;
+      }
+      if (best) return best;
+    }
+    return null;
+  };
+  const first = "first";
+
+  let rows = {};
+  if (k === "side") {
+    // Davanti e dietro: si guarda dalla parte del naso
+    const nose = seen(p, LM.nose) ? p.lm[LM.nose] : null;
+    if (!nose) return {};
+    const fwd = nose[0] > ax.s[0];
+    const side = (r) => r && r.w < T * 1.2 ? [[fwd ? r.x1 : r.x0, r.y], [fwd ? r.x0 : r.x1, r.y]] : null;
+    return {
+      chest: side(row(uChest, false)),
+      waist: side(row(uNavel, false)),
+      glutes: side(widest(0.9, 1.25, false)),
+    };
+  }
+  const shoulders = widest(-0.06, 0.12, false);
+  rows = {
+    shoulders,
+    chest: k === "front" ? at1(female ? uChest + 0.12 : uChest) : null,
+    back: k === "back" ? widest(0.18, 0.42) : null,
+    waist: female || k === "back" ? narrowest(0.42, 0.85) : at1(uNavel),
+    hips: widest(k === "back" ? 0.8 : 0.85, k === "back" ? 1.0 : 1.15),
+    glutes: k === "back" ? widest(0.95, 1.3) : null,
+    thigh: leg(0, 1, 0.12, 0.45, first),
+    calf: k === "back" ? leg(1, 2, 0.15, 0.55, (a, b) => a.w > b.w) : null,
+  };
+  // Braccio: quello che non tiene il telefono (la mano più in alto), nel punto più largo fra spalla e gomito
+  if (k === "front") {
+    const [a0, a1] = limbs.arms, wristY = (a) => a[2]?.[1] ?? Infinity;
+    const arm = wristY(a0) < wristY(a1) ? a1 : a0;
+    let best = null;
+    if (arm.length >= 2) {
+      for (let f = 0.25; f <= 0.8; f += 0.03) {
+        const y = arm[0][1] + (arm[1][1] - arm[0][1]) * f, x = arm[0][0] + (arm[1][0] - arm[0][0]) * f;
+        const sg = segAt(sil, y, x, T * 0.02), c = at(0, uyOf(y));
+        if (!sg || (c[0] > sg[0] && c[0] < sg[1])) continue; // attaccato al busto
+        if (!best || sg[1] - sg[0] > best.w) best = { y, x0: sg[0], x1: sg[1], w: sg[1] - sg[0] };
+      }
+    }
+    rows.arm = best;
+  }
+  // Controlli di buon senso rispetto alla larghezza delle spalle (fra le articolazioni)
+  const limits = { shoulders: [0.9, 1.8], chest: [0.6, 1.3], back: [0.6, 1.4], waist: [0.45, 1.15], hips: [0.55, 1.4], glutes: [0.55, 1.4], thigh: [0.2, 0.75], calf: [0.12, 0.5], arm: [0.1, 0.5] };
+  const out = {};
+  for (const [id, r] of Object.entries(rows)) {
+    if (!r || !lr || !limits[id]) continue;
+    if (r.w < limits[id][0] * sw || r.w > limits[id][1] * sw) continue;
+    out[id] = [[r.x0, r.y], [r.x1, r.y]].map((q) => q.map((v) => Math.round(v * 10) / 10));
+  }
+  return out;
+}
+
+// Misure scelte che mancano e che si possono ancora provare in automatico
+const measuresToTry = (p) => settings.detect === "auto" && !p.measHand && p.lm?.length
+  ? POSES[p.pose].measures.filter((id) => !p.meas[id]?.length && !p.measTried?.has(id)) : [];
 
 // Foto da cui partire per una posa che non ne ha: la più adatta (mani lontane dal busto, poi la più vecchia)
 function seedCandidates(k) {
@@ -1528,48 +1785,83 @@ async function processQueue() {
       }
       changedAny = true;
     }
+    // Posa riconosciuta da sola, finché non la scegli tu e la foto non ha punti
+    let posed = 0;
+    for (const p of state.photos) {
+      if (p.poseSet || p.align.length || !p.lm?.length) continue;
+      const k = classifyPose(p);
+      p.poseSet = "auto"; // deciso una volta: se lo cambi tu, resta il tuo
+      if (k && k !== p.pose) { p.pose = k; p.meas = {}; posed++; }
+      save(p);
+      changedAny = true;
+    }
+    // In automatico anche la prima foto di ogni posa: i punti si stimano dalla posa e si rifiniscono sull'immagine
+    let seeded = 0;
+    if (settings.detect === "auto") {
+      for (const k of POSE_KEYS) {
+        // Fra le foto della posa, la stima più sicura fa da partenza (a parità, la più vecchia)
+        let pick = null;
+        for (const p of seedCandidates(k)) {
+          p.seedTried = true;
+          await new Promise((r) => setTimeout(r));
+          const r = seedAlign(p);
+          if (r && (!pick || r.conf > pick.r.conf)) pick = { p, r };
+          if (r?.conf >= 0.6) break;
+        }
+        if (pick) {
+          const { p, r } = pick;
+          p.align = r.align;
+          p.noThird = !!r.noThird || r.align.length < POSES[k].align.length;
+          p.auto = { conf: r.conf, sure: r.conf >= 0.5, seed: true };
+          save(p);
+          seeded++;
+          changedAny = true;
+        }
+      }
+    }
+    // Le altre foto partono dalla prima (o dai riferimenti)
     const pending = state.photos.filter((p) => !p.align.length && p.lm?.length && !p.autoSkip && anchorsFor(p.pose).some((a) => a !== p));
     let done = 0;
     for (const [i, p] of pending.entries()) {
-      if (pending.length > 1) toast(`Allineo in automatico ${i + 1}/${pending.length}…`);
+      if (pending.length > 2) toast(`Allineo ${i + 1}/${pending.length}…`);
       await new Promise((r) => setTimeout(r));
       if (autoAlign(p)) done++;
       else p.autoSkip = true;
       changedAny = true;
     }
-    const unsure = pending.filter((p) => p.auto && !p.auto.sure).length;
-    // In automatico anche la prima foto di ogni posa: i punti si stimano e tu li controlli. Le altre partono da lei
-    const seeded = [];
-    if (settings.detect === "auto") {
-      for (const k of POSE_KEYS) {
-        for (const p of seedCandidates(k)) {
-          p.seedTried = true;
-          await new Promise((r) => setTimeout(r));
-          const r = seedAlign(p);
-          if (!r) continue;
-          p.align = r.align;
-          p.noThird = !!r.noThird || r.align.length < POSES[k].align.length;
-          p.auto = { conf: r.conf, sure: false, seed: true };
-          save(p);
-          seeded.push(p);
-          changedAny = true;
-          break;
-        }
-      }
+    // Misure dalla sagoma. Una foto riaperta non ha la sagoma in memoria: si riconosce di nuovo, una volta
+    let measured = 0;
+    for (const p of state.photos) {
+      const ids = measuresToTry(p);
+      if (!ids.length) continue;
+      if (!p.sil && poserGpu && !p.silTried) { p.silTried = true; await detectPose(p); }
+      p.measTried ??= new Set();
+      ids.forEach((id) => p.measTried.add(id));
+      if (!p.sil) continue;
+      const m = autoMeasures(p);
+      const got = ids.filter((id) => m[id]);
+      got.forEach((id) => { p.meas[id] = m[id]; });
+      if (got.length) { p.measAuto = true; measured++; save(p); changedAny = true; }
+      await new Promise((r) => setTimeout(r));
     }
-    if (seeded.length) {
-      // Se stai guardando una foto ancora senza punti della stessa posa, passi a quella da controllare
-      const cur = state.selected;
-      const show = seeded.find((p) => !cur || (cur.pose === p.pose && !cur.align.length) || cur === p);
-      if (show && state.view === "prepare") { state.selected = show; state.mode = "align"; }
-      const p = show || seeded[0];
-      toast(`Ho trovato i punti nella foto ${POSES[p.pose].label.toLowerCase()} del ${labelOf(p)}: controllali, poi allineo le altre${seeded.length > 1 ? `. Da controllare anche: ${seeded.filter((q) => q !== p).map((q) => POSES[q.pose].label.toLowerCase()).join(", ")}` : ""}`);
-    } else if (pending.length) toast(`${done === 1 ? "1 foto allineata" : `${done} foto allineate`} in automatico${unsure ? `: ${unsure} da controllare` : ""}${done < pending.length ? `, ${pending.length - done} da fare a mano` : ""}`);
+    const total = seeded + done;
+    if (total || measured || posed) {
+      const by = POSE_KEYS.map((k) => [k, state.photos.filter((p) => p.pose === k).length]).filter(([, n]) => n);
+      const manual = state.photos.filter((p) => p.lm && !p.align.length).length;
+      toast(`${total ? `${total === 1 ? "1 foto allineata" : `${total} foto allineate`}` : "Foto riconosciute"}${measured ? ", misure prese" : ""} · ${by.map(([k, n]) => `${n} ${POSES[k].label.toLowerCase()}`).join(", ")}${manual > 0 ? ` · ${manual} da fare a mano` : ""}`);
+    }
   } catch {
     toast(location.protocol === "file:" ? "Il riconoscimento della posa non parte: da file serve internet la prima volta. Puoi allineare a mano." : "Il riconoscimento della posa non parte: riprova più tardi. Puoi allineare a mano.");
     state.photos.forEach((p) => { if (!p.lm) p.lm = []; });
   }
   queueBusy = false;
+  // Foto nuove tutte pronte: si passa da soli al confronto della posa con più foto
+  if (state.goCompare && settings.detect === "auto" && !state.photos.some((p) => !p.lm) && state.view === "prepare") {
+    state.goCompare = false;
+    computeTransforms();
+    const best = POSE_KEYS.map((k) => [k, readyFor(k).length]).sort((a, b) => b[1] - a[1])[0];
+    if (best?.[1] >= 2 && !state.photos.some((p) => p.lm && !p.align.length)) { state.comparePose = best[0]; state.view = "compare"; changedAny = true; }
+  }
   if (changedAny) refresh();
   if (state.photos.some((p) => !p.lm)) processQueue();
 }
@@ -1738,21 +2030,24 @@ function updatePrepare() {
   $("#coachSection").hidden = !tips;
   if (tips) $("#coachTips").innerHTML = tips.length ? tips.map((t) => `<li>${esc(t)}</li>`).join("") : '<li class="ok">Inquadratura uguale al riferimento.</li>';
   const toCheck = state.mode === "align" && p.auto && !p.auto.sure;
-  $("#confirmBtn").hidden = !toCheck;
+  $("#confirmBtn").hidden = !toCheck || settings.detect === "auto";
   $("#autoBtn").hidden = !(state.mode === "align" && p.lm?.length && (settings.detect === "auto" || anchorsFor(p.pose).some((a) => a !== p)));
   $("#pointsBtn").hidden = !(state.mode === "align" && POINT_CHOICES[p.pose]);
-  // In attesa: la prima foto della posa è da controllare, poi si allinea anche questa
-  const waitFor = !p.align.length && settings.detect === "auto" ? state.photos.find((q) => q !== p && q.pose === p.pose && q.auto?.seed) : null;
+  const auto = settings.detect === "auto";
+  const failed = auto && !p.align.length && p.lm && (p.autoSkip || !p.lm.length);
   $("#stepNote").innerHTML = state.mode === "align"
-    ? (p.auto?.seed ? "Punti trovati da soli: è la prima foto di questa posa, quindi controllali. Se sono giusti premi <b>Sono giusti</b>, se no trascinali. Poi allineo le altre su questa."
-      : p.auto ? (p.auto.sure ? "Punti messi in automatico. Se sono sbagliati, trascinali." : "Punti messi in automatico ma incerti: se sono al posto giusto premi Sono giusti, se no trascinali. Finché non li controlli la foto non conta nell'analisi.")
-      : waitFor ? `Questa la allineo io appena controlli i punti della foto del ${esc(labelOf(waitFor))}. Oppure metti tu i punti qui.`
+    ? (p.auto ? (p.auto.sure ? "Punti trovati in automatico. Se uno è sbagliato, trascinalo." : auto ? "Punti trovati in automatico, un po' incerti: se uno è sbagliato trascinalo, se no va bene così." : "Punti messi in automatico ma incerti: se sono al posto giusto premi Sono giusti, se no trascinali. Finché non li controlli la foto non conta nell'analisi.")
+      : failed ? "In questa foto non ho trovato la persona o i punti: mettili tu."
       : "Usa gli stessi punti in tutte le foto della stessa posa. Trascina un punto per correggerlo.")
+    : auto ? (p.measAuto ? "Misure prese dalla sagoma. Se un punto è sbagliato, trascinalo." : "Le misure che non riesco a prendere (braccia attaccate al corpo, foto tagliata) le metti tu, se vuoi.")
     : "Le misure sono facoltative. Cosa misurare si sceglie in Impostazioni.";
 
   const coach = $("#coach");
   const touchHint = (h) => MOBILE ? h.replace(/Clicca/g, "Tocca").replace(/clicca/g, "tocca") : h;
-  if (toCheck) {
+  if (toCheck && auto) {
+    coach.className = "coach done";
+    coach.textContent = "Allineata in automatico · se un punto è sbagliato, trascinalo";
+  } else if (toCheck) {
     coach.className = "coach check";
     coach.innerHTML = MOBILE ? "Controlla i punti. Giusti? Premi <b>Sono giusti</b>. Se no, trascinali col dito." : "Controlla i punti. Giusti? Premi <b>Sono giusti</b>. Se no, trascinali.";
   } else if (state.mode === "align" && !p.align.length && settings.detect === "auto" && !p.lm) {
@@ -1980,6 +2275,9 @@ $("#poseInput").addEventListener("change", (e) => {
   const p = state.selected;
   const hadPoints = p.align.length || Object.keys(p.meas).length;
   p.pose = e.target.value;
+  p.poseSet = "user";
+  p.measHand = false;
+  p.measTried = null;
   p.align = [];
   p.meas = {};
   p.noThird = false;
@@ -2001,6 +2299,7 @@ $("#flipBtn").addEventListener("click", async () => {
   p.align = p.align.map(([x, y]) => [w - x, y]);
   mapMeas(p, ([x, y]) => [w - x, y]);
   if (p.lm) p.lm = p.lm.map(([x, y, v]) => [w - x, y, v]);
+  p.sil = null; p.silTried = false; // la sagoma era della foto non specchiata
   await renderProc(p);
   changed(p);
 });
@@ -2011,6 +2310,7 @@ $("#resetAdjust").addEventListener("click", async () => {
     p.align = p.align.map(([x, y]) => [w - x, y]);
     mapMeas(p, ([x, y]) => [w - x, y]);
     if (p.lm) p.lm = p.lm.map(([x, y, v]) => [w - x, y, v]);
+  p.sil = null; p.silTried = false; // la sagoma era della foto non specchiata
   }
   p.flip = false;
   p.bright = 0;
@@ -2043,7 +2343,7 @@ $("#undoBtn").addEventListener("click", undo);
 $("#clearBtn").addEventListener("click", () => {
   const p = state.selected;
   if (state.mode === "align") { p.align = []; p.noThird = false; p.auto = null; p.autoSkip = true; p.handMade = true; p.tweak = null; }
-  else POSES[p.pose].measures.forEach((id) => delete p.meas[id]);
+  else { POSES[p.pose].measures.forEach((id) => delete p.meas[id]); p.measHand = true; }
   changed(p);
 });
 function undo() {
@@ -2052,6 +2352,7 @@ function undo() {
   if (state.mode === "measure") {
     const last = measureSteps(p).filter((s) => stepDone(p, s)).pop();
     if (!last) return;
+    p.measHand = true;
     p.meas[last.id].splice(last.i, 1);
     if (!p.meas[last.id].length) delete p.meas[last.id];
     changed(p);
@@ -2114,7 +2415,7 @@ function renderSidebar() {
       item.className = "item";
       item.setAttribute("aria-current", p === state.selected && state.view === "prepare");
       const status = !p.M ? (p.lm || p.align.length ? '<span class="pill">Da allineare</span>' : '<span class="pill">Riconosco la posa…</span>')
-        : p.auto ? (!p.auto.sure ? '<span class="pill yellow">Da controllare</span>' : '<span class="pill blue"><svg class="icon"><use href="#i-sparkle"/></svg>Allineata</span>')
+        : p.auto ? (!p.auto.sure && settings.detect !== "auto" ? '<span class="pill yellow">Da controllare</span>' : '<span class="pill blue"><svg class="icon"><use href="#i-sparkle"/></svg>Allineata</span>')
         : measureComplete(p) ? '<span class="pill green">Con misure</span>' : '<span class="pill blue">Allineata</span>';
       const pill = `<span class="pills">${p.ref ? '<span class="pill accent"><svg class="icon"><use href="#i-star"/></svg>Riferimento</span>' : ""}${status}</span>`;
       item.innerHTML = `<img alt="" src="${p.thumb}"><span class="txt"><span class="date">${p.date ? fmtDate(p.date) : "Senza data"}</span>`
@@ -2577,7 +2878,9 @@ function analyzePose(k) {
     r.lightFlags = [];
     r.handFlags = r.hand === "belly" ? ["mano sulla pancia"] : r.hand === "chest" ? ["mano sul petto"] : [];
     r.isRef = refRow ? r === refRow : rows.length === 2 && i === 0;
-    if (r.p.auto && !r.p.auto.sure) r.geo.push("punti automatici da controllare");
+    // In automatico i punti incerti contano lo stesso: si segnalano ma non tolgono la foto dal conto
+    const unsure = r.p.auto && !r.p.auto.sure && settings.detect !== "auto";
+    if (unsure) r.geo.push("punti automatici da controllare");
     if (r.isRef) return;
     const tilt = Math.abs(r.rot - ref.rot);
     if (tilt > 10) r.geo.push(`storta di ${Math.round(tilt)}°`);
@@ -2597,7 +2900,7 @@ function analyzePose(k) {
     }
   });
   rows.forEach((r) => {
-    const score = r.geo.length + (r.p.auto && !r.p.auto.sure ? 1 : 0) + r.lightFlags.length * 0.5;
+    const score = r.geo.length + (r.p.auto && !r.p.auto.sure && settings.detect !== "auto" ? 1 : 0) + r.lightFlags.length * 0.5;
     r.level = r.isRef ? "ref" : score === 0 ? "good" : score < 2 ? "ok" : "bad";
     r.auto = r.level !== "bad";
     r.rank = r.geo.length * 2 + r.handFlags.length + r.lightFlags.length * 0.25 + (r.p.auto ? 1 - r.p.auto.conf : 0) - (r.isRef ? 100 : 0);
@@ -3132,6 +3435,7 @@ function cleanPhoto(v) {
     date: validDate(v.date) ? v.date : "", pose: POSE_KEYS_ALL.includes(v.pose) ? v.pose : "front",
     flip: v.flip === true, bright: clampNum(v.bright, -50, 50), contrast: clampNum(v.contrast, -50, 50),
     align: pts(v.align, 3), meas, noThird: v.noThird === true,
+    poseSet: ["auto", "user"].includes(v.poseSet) ? v.poseSet : false, measHand: v.measHand === true,
     use: typeof v.use === "boolean" ? v.use : null,
     auto: v.auto && typeof v.auto === "object" ? { conf: clampNum(v.auto.conf, 0, 1), sure: v.auto.sure === true, ...(v.auto.seed === true ? { seed: true } : {}) } : null,
     lm: Array.isArray(v.lm) ? pts(v.lm, 33) : null,
@@ -3285,7 +3589,7 @@ function refresh() {
   $("#emptyView").hidden = has;
   $("#editFrame").hidden = !has || state.view !== "prepare";
   if ($("#editFrame").hidden) { $("#editBar").hidden = true; $("#coach").hidden = true; $("#pointPick").hidden = true; }
-  $("#howAlign").textContent = settings.detect === "auto" ? "I punti li trovo io, tu li controlli." : "Una foto a mano, le altre in automatico.";
+  $("#howAlign").textContent = settings.detect === "auto" ? "Posa, punti e misure li trovo io." : "Una foto a mano, le altre in automatico.";
   $("#compareFrame").hidden = !has || state.view !== "compare";
   $("#guideFrame").hidden = !has || state.view !== "guide";
   $("#prepareInspector").hidden = state.view !== "prepare";
