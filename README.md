@@ -7,10 +7,7 @@ Confronto delle foto dei progressi in palestra, tutto in una pagina HTML.
 - **Le foto non lasciano mai il dispositivo.** Si aprono e si analizzano nel browser; nessun server le riceve.
 - **Niente tracciamento:** niente account, cookie, statistiche, font o script di terzi.
 - **Connessioni bloccate dal browser.** La pagina ha una Content Security Policy che le permette di collegarsi solo al proprio sito. Qualunque altro invio (fetch, beacon, immagini, websocket) viene bloccato.
-- **Le librerie stanno in `vendor/`.** Pubblicata, la pagina non contatta nessun altro sito. Aperta come file dal computer, il browser non può leggere `vendor/` e le scarica una volta da jsDelivr e Google Storage (solo il codice, mai le foto).
 - **I dati stanno nel browser:** punti, misure e impostazioni in localStorage, foto di riferimento in IndexedDB.
-- **Il file di salvataggio** (Impostazioni › Salva i progressi) contiene anche le foto di riferimento in base64, se le includi. Resta dove lo salvi tu: su iPhone in File › Sul mio iPhone, non in iCloud Drive.
-- `noindex`: i motori di ricerca non la indicizzano.
 
 ## Cosa fa
 
@@ -20,9 +17,6 @@ Confronto delle foto dei progressi in palestra, tutto in una pagina HTML.
 - Propone una foto di riferimento e una guida per rifare le foto sempre uguali.
 - Funziona anche da telefono.
 
-## Come si usa
-
-Apri `index.html` con il browser (o la pagina pubblicata) e aggiungi le foto: JPG, PNG, HEIC e screenshot.
 
 ## Librerie in `vendor/`
 
