@@ -18,8 +18,8 @@
   FitProgress: confronto delle foto dei progressi in palestra.
   Tutto resta nel browser: le foto non vengono caricate da nessuna parte.
   Le librerie (convertitore HEIC e riconoscimento della posa) stanno nella cartella vendor/,
-  accanto alla pagina: pubblicata, la pagina non contatta nessun altro sito. Aperta come file
-  dal computer, il browser non può leggere vendor/ e le scarica da jsDelivr e Google Storage.
+  accanto alla pagina, e si prendono da lì. Solo se vendor/ non si legge (pagina aperta come file
+  dal computer, cartella mancante o rete che non risponde) si scaricano da jsDelivr e Google Storage.
   In tutti e due i casi versione e impronta SHA-256 sono fisse.
   Punti, posa e regolazioni si salvano nel browser (localStorage), legati a nome e
   dimensione del file: riaprendo la pagina e trascinando le stesse foto si ritrovano.
@@ -51,6 +51,11 @@
   button, input, select { font: inherit; color: inherit; }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   [hidden] { display: none !important; }
+  /* È un'app, non un documento: niente selezione dei testi, niente menu del tocco lungo, niente lampeggio al tocco */
+  body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+  input, select, textarea { -webkit-user-select: text; user-select: text; }
+  canvas, img, svg, .frame { -webkit-touch-callout: none; -webkit-user-drag: none; }
+  button, label, select { touch-action: manipulation; }
   svg.icon { width: 16px; height: 16px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
   /* ---------- controlli ---------- */
@@ -134,11 +139,32 @@
   #compareCanvas { display: block; max-width: 100%; max-height: calc(100vh - 56px - 48px); touch-action: pan-y; }
   #compareCanvas.wipe { touch-action: none; }
   #compareCanvas.wipe { cursor: ew-resize; }
-  .coach { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); max-width: calc(100% - 24px); padding: 8px 14px; border-radius: 999px; background: rgba(14, 14, 16, .82); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.1); line-height: 1.35; font-size: 13px; text-align: center; pointer-events: none; }
+  .coach { position: absolute; z-index: 2; left: 50%; top: 12px; transform: translateX(-50%); max-width: calc(100% - 24px); padding: 8px 14px; border-radius: 999px; background: rgba(14, 14, 16, .82); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.1); line-height: 1.35; font-size: 13px; text-align: center; pointer-events: none; }
   .coach b { color: var(--align); font-weight: 600; }
   .coach.measure b { color: var(--measure); }
   .coach.done { color: var(--ok); }
   #loupe { position: absolute; width: 150px; height: 150px; border-radius: 50%; border: 2px solid rgba(255,255,255,.85); box-shadow: 0 6px 24px rgba(0,0,0,.6); pointer-events: none; }
+  .coach.check b { color: var(--ok); }
+
+  /* scelta dei punti, sopra la foto */
+  .zoom-btn { position: absolute; right: 8px; bottom: 8px; height: 34px; padding: 0 12px; border-radius: 17px; border: 1px solid rgba(255,255,255,.18); background: rgba(14,14,16,.78); color: var(--text); font: inherit; font-size: 13px; line-height: 1; cursor: pointer; }
+  .pick { position: absolute; z-index: 3; inset: 0; display: flex; align-items: center; justify-content: center; padding: 14px; overflow: auto; background: rgba(10, 10, 12, .74); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); line-height: 1.45; overscroll-behavior: contain; }
+  .pick-card { width: min(380px, 100%); display: grid; gap: 10px; margin: auto; }
+  .pick-card h3 { margin: 0; font-size: 16px; letter-spacing: -.01em; }
+  .pick-card p { margin: 0; color: var(--muted); font-size: 12.5px; }
+  .pick-opts { display: grid; gap: 8px; }
+  .pick-opt { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 72px; padding: 8px 14px 8px 8px; border-radius: 12px; border: 1px solid var(--border-strong); background: var(--raised); text-align: left; cursor: pointer; }
+  .pick-opt:hover { background: var(--hover); }
+  .pick-opt:active { transform: scale(.985); }
+  .pick-opt[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+  .pick-opt svg { width: 48px; height: 56px; flex-shrink: 0; color: var(--muted); }
+  .pick-opt span { display: grid; gap: 2px; }
+  .pick-opt b { font-size: 14px; font-weight: 600; }
+  .pick-opt small { color: var(--muted); font-size: 12px; }
+  .pick-card .btn { justify-self: center; }
+
+  /* pulsanti sotto la foto: solo sul telefono */
+  .editbar { display: none; }
 
   .inspector { border-left: 1px solid var(--border); background: var(--panel); overflow-y: auto; }
   .section { padding: 16px; border-bottom: 1px solid var(--border); display: grid; gap: 12px; }
@@ -203,6 +229,7 @@
   .link:hover { text-decoration: underline; }
   .warn { margin: 0; padding: 8px 10px; border-radius: 8px; background: rgba(255,162,76,.12); color: #ffc58f; font-size: 12px; }
   .switch small { display: block; color: var(--faint); font-size: 11.5px; margin-top: 2px; }
+  .pose-label { color: var(--muted); font-size: 12px; margin-bottom: -4px; }
 
   /* ---------- guida e consigli ---------- */
   .tips { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
@@ -288,8 +315,26 @@
     .item .date { font-size: 12px; }
     .item .pill { font-size: 10px; height: 16px; padding: 0 5px; }
     .remove { top: 8px; right: 8px; opacity: 1; background: rgba(14,14,16,.75); }
-    .canvas-area { padding: 10px; overflow: visible; }
-    #editCanvas, #compareCanvas, #guideCanvas { max-height: 62dvh; }
+    .canvas-area { padding: 10px; overflow: visible; flex-direction: column; gap: 8px; }
+    #compareCanvas, #guideCanvas { max-height: 62dvh; }
+    /* Foto e pulsanti nello schermo insieme, senza scorrere: sopra ci sono la barra e le miniature */
+    /* Suggerimento, foto e pulsanti nello schermo insieme, senza scorrere (sopra ci sono la barra e le miniature).
+       Il suggerimento sta sopra la foto, non sopra il busto */
+    #editCanvas { max-height: max(260px, calc(100dvh - 380px)); }
+    /* Altezza fissa: se il testo cambia, la foto non si sposta sotto il dito */
+    .coach { position: static; transform: none; width: 100%; max-width: 520px; border-radius: 12px; height: 64px; display: flex; align-items: center; justify-content: center; overflow: hidden; font-size: 12.5px; }
+    .coach[hidden] { display: none; }
+    .coach.away { visibility: visible; }
+    .editbar { display: flex; gap: 8px; width: 100%; max-width: 520px; }
+    .editbar[hidden] { display: none; }
+    .editbar .btn { flex: 1; height: 46px; font-size: 15px; border-radius: 12px; }
+    .item { width: 84px; }
+    .item img { width: 64px; height: 84px; }
+    .item .pill { white-space: nowrap; max-width: 74px; overflow: hidden; text-overflow: ellipsis; display: block; line-height: 16px; }
+    .toast { top: calc(max(8px, env(safe-area-inset-top)) + 96px); bottom: auto !important; transform: translate(-50%, -12px); }
+    .pick-opt { min-height: 76px; }
+    .steps li { padding: 9px 8px; }
+    .actions .btn { height: 40px; }
     .coach { top: 8px; padding: 6px 10px; border-radius: 12px; font-size: 12px; }
     .inspector { border-left: 0; overflow: visible; padding-bottom: env(safe-area-inset-bottom); }
     .how { grid-template-columns: 1fr; }
@@ -301,7 +346,7 @@
     .dialog footer { padding-bottom: max(14px, env(safe-area-inset-bottom)); }
     .checks { grid-template-columns: 1fr; gap: 6px; }
     .checks .pose { padding-top: 6px; }
-    .toast { bottom: max(16px, env(safe-area-inset-bottom)); }
+
   }
 
   body.dragging::after { content: "Rilascia le foto"; position: fixed; inset: 0; display: grid; place-items: center; font-size: 20px; font-weight: 600; background: rgba(79, 140, 255, .1); border: 2px dashed var(--accent); pointer-events: none; z-index: 10; }
@@ -352,15 +397,22 @@
       </div>
       <div class="how">
         <div><b>1 · Posa e data</b><span>Data dal nome del file (2026-01-10.png) o a mano.</span></div>
-        <div><b>2 · Allinea</b><span>Una foto a mano, le altre in automatico.</span></div>
+        <div><b>2 · Allinea</b><span id="howAlign">I punti li trovo io, tu li controlli.</span></div>
         <div><b>3 · Confronta</b><span>Cursore, affiancate o in trasparenza.</span></div>
       </div>
     </div>
 
+    <div class="coach" id="coach" aria-live="polite" hidden></div>
     <div class="frame" id="editFrame" hidden>
       <canvas id="editCanvas"></canvas>
-      <div class="coach" id="coach" aria-live="polite"></div>
       <canvas id="loupe" width="300" height="300" hidden></canvas>
+      <button type="button" class="zoom-btn" id="zoomBtn" hidden></button>
+    </div>
+    <div class="pick" id="pointPick" hidden></div>
+    <div class="editbar" id="editBar" hidden>
+      <button type="button" class="btn" data-proxy="undoBtn"><svg class="icon"><use href="#i-undo"/></svg>Annulla</button>
+      <button type="button" class="btn" data-proxy="skipBtn">Salta</button>
+      <button type="button" class="btn primary" data-proxy="confirmBtn">Sono giusti</button>
     </div>
 
     <div class="frame" id="compareFrame" hidden><canvas id="compareCanvas"></canvas></div>
@@ -399,6 +451,7 @@
           <button class="btn ghost" id="skipBtn" hidden>Salta</button>
           <button class="btn" id="confirmBtn" hidden>Sono giusti</button>
           <button class="btn ghost" id="autoBtn" hidden><svg class="icon"><use href="#i-sparkle"/></svg>Rifai in automatico</button>
+          <button class="btn ghost" id="pointsBtn" hidden>Cambia punti</button>
         </div>
         <p class="note" id="stepNote"></p>
       </div>
@@ -506,11 +559,15 @@ const MEASURES = {
     waist: { name: "Pancia", where: "all'altezza dell'ombelico", talk: ["pancia più in fuori", "pancia più piatta"] },
     glutes: { name: "Glutei", where: "nel punto più sporgente dei glutei", talk: ["glutei più pieni", "glutei più piatti"] },
   },
+  // Dall'alto in basso: è anche l'ordine dei clic
   back: {
+    shoulders: { name: "Spalle", where: "il punto più largo delle spalle, sul deltoide", talk: ["spalle più larghe", "spalle più strette"] },
     back: { name: "Dorsali", where: "dove la schiena è più larga, sotto le ascelle", talk: ["dorsali più larghi", "dorsali più stretti"] },
     waist: { name: "Vita", where: "nel punto più stretto", talk: ["vita più larga", "vita più stretta"] },
-    hips: { name: "Fianchi", where: "il punto più largo di fianchi e glutei", talk: ["fianchi più larghi", "fianchi più stretti"] },
+    hips: { name: "Fianchi", where: "il punto più largo dei fianchi, sopra i glutei", talk: ["fianchi più larghi", "fianchi più stretti"] },
+    glutes: { name: "Glutei", where: "il punto più largo dei glutei", talk: ["glutei più larghi", "glutei più stretti"] },
     thigh: { name: "Coscia", where: "una coscia nel punto più largo, subito sotto i glutei", talk: ["cosce più piene", "cosce più sottili"], full: true },
+    calf: { name: "Polpaccio", where: "un polpaccio nel punto più largo", talk: ["polpacci più grossi", "polpacci più sottili"], full: true },
   },
 };
 // Rapporti fra due misure, mostrati quando ci sono tutte e due
@@ -527,11 +584,12 @@ const RATIOS = {
   back: [
     { id: "vtaper", a: "back", b: "waist", name: "V-taper", talk: ["la V si apre", "la V si chiude"] },
     { id: "whr", a: "waist", b: "hips", name: "Vita / fianchi", talk: ["la vita si allarga rispetto ai fianchi", "la vita si stringe rispetto ai fianchi"] },
+    { id: "gw", a: "glutes", b: "waist", name: "Glutei / vita", talk: ["i glutei si allargano rispetto alla vita", "la vita si allarga rispetto ai glutei"] },
   ],
 };
 const PRESETS = {
   male: { front: ["shoulders", "waist"], side: ["chest", "waist"], back: ["back", "waist"], full: { front: ["thigh"], back: [] } },
-  female: { front: ["shoulders", "waist", "hips"], side: ["waist", "glutes"], back: ["waist", "hips"], full: { front: ["thigh"], back: ["thigh"] } },
+  female: { front: ["shoulders", "waist", "hips"], side: ["waist", "glutes"], back: ["waist", "glutes"], full: { front: ["thigh"], back: ["thigh"] } },
   custom: { front: ["shoulders", "waist", "hips"], side: ["chest", "waist"], back: ["back", "waist"], full: { front: ["thigh"], back: [] } },
 };
 const WHO = { male: "Uomo", female: "Donna", custom: "Scelgo io" };
@@ -540,9 +598,20 @@ const FRAMINGS = {
   full: { label: "Figura intera", sub: "Dalla testa ai piedi" },
 };
 const SCHEMES = {
-  nipples: { label: "Capezzoli", sub: "I più precisi, se si vedono" },
+  nipples: { label: "Capezzoli", sub: "I più precisi, se si vedono. Più l'ombelico, se vuoi" },
   neckNavel: { label: "Collo e ombelico", sub: "Vanno bene anche con reggiseno o top" },
 };
+const SIDE_SCHEMES = {
+  nipple: { label: "Capezzolo e ombelico", sub: "I più precisi, se il capezzolo si vede" },
+  chest: { label: "Petto e ombelico", sub: "Il punto più sporgente del petto: va bene anche con un top" },
+};
+// Come si trovano i punti per allineare
+const DETECTS = {
+  auto: { label: "Automatico", sub: "Trovo io i punti in tutte le foto, anche nella prima. Tu li controlli" },
+  manual: { label: "Manuale", sub: "Nella prima foto di ogni posa scegli quali punti usare e li metti tu. Le altre le allineo io" },
+};
+// Pose che si possono allineare con punti diversi: la scelta sta in settings[key]
+const POINT_CHOICES = { front: { key: "scheme", options: SCHEMES }, side: { key: "sideScheme", options: SIDE_SCHEMES } };
 
 function presetMeasures(who, framing) {
   const base = PRESETS[who] || PRESETS.male;
@@ -550,12 +619,21 @@ function presetMeasures(who, framing) {
 }
 const POSE_KEYS_ALL = ["front", "side", "back"];
 function defaultSettings(who = "male", framing = "torso") {
-  return { who, framing, scheme: who === "female" ? "neckNavel" : "nipples", measures: presetMeasures(who, framing), definition: true };
+  return {
+    who, framing, detect: "auto", scheme: who === "female" ? "neckNavel" : "nipples", sideScheme: who === "male" ? "nipple" : "chest",
+    measures: presetMeasures(who, framing), definition: true,
+  };
 }
 function loadSettings() {
   try {
     const s = JSON.parse(localStorage.getItem(SETTINGS_KEY));
-    if (s && FRAMINGS[s.framing] && SCHEMES[s.scheme] && s.measures) return { ...defaultSettings(), ...s };
+    if (s && FRAMINGS[s.framing] && SCHEMES[s.scheme] && s.measures) {
+      // Le impostazioni salvate prima di una scelta nuova prendono il valore che c'era (di lato: dipendeva da chi usa l'app)
+      const d = defaultSettings(WHO[s.who] ? s.who : "male", s.framing), out = { ...d, ...s };
+      if (!DETECTS[out.detect]) out.detect = d.detect;
+      if (!SIDE_SCHEMES[out.sideScheme]) out.sideScheme = d.sideScheme;
+      return out;
+    }
   } catch { /* niente salvato */ }
   return null;
 }
@@ -598,7 +676,7 @@ function buildPoses() {
     side: {
       label: "Di lato",
       align: [
-        settings.who === "male" ? { name: "Capezzolo", hint: "Clicca il <b>capezzolo</b>." }
+        settings.sideScheme === "nipple" ? { name: "Capezzolo", hint: "Clicca il <b>capezzolo</b>." }
           : { name: "Punto più sporgente del petto", hint: "Clicca il <b>punto più sporgente del petto</b>." },
         { name: "Ombelico", hint: "Clicca l'<b>ombelico</b>, o il centro dell'elastico se è coperto." },
       ],
@@ -621,7 +699,8 @@ buildPoses();
 const MOBILE = matchMedia("(pointer: coarse)").matches && Math.min(screen.width, screen.height) < 820;
 const MAX_SIDE = MOBILE ? 1280 : 1600;
 
-const state = { photos: [], selected: null, mode: "align", view: "prepare", cmode: "wipe", wipe: 50, fade: 50, comparePose: "front", thirds: {}, refKeys: new Set(), guidePose: "front" };
+// picked: pose per cui in questa sessione hai già scelto i punti; picking: posa di cui stai cambiando i punti
+const state = { photos: [], selected: null, mode: "align", view: "prepare", cmode: "wipe", wipe: 50, fade: 50, comparePose: "front", thirds: {}, refKeys: new Set(), guidePose: "front", picked: new Set(), picking: null };
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fmtDate = (d) => d ? d.split("-").reverse().join("/") : "";
@@ -793,15 +872,18 @@ function migrateMeasure(saved) {
 
 const canvasBlob = (c, type = "image/jpeg", q = 0.92) => new Promise((resolve, reject) => c.toBlob((b) => b ? resolve(b) : reject(new Error("blob")), type, q));
 const validDate = (d) => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d);
-// Stessa foto salvata con un altro nome o un'altra dimensione del file (altro dispositivo): si ritrova con data e ora di scatto
+// Stessa foto salvata con un altro nome o un'altra dimensione del file (altro dispositivo): si ritrova con data e ora di scatto.
+// Solo se il salvataggio è uno e non appartiene a una foto già aperta: foto a raffica hanno la stessa ora ma punti diversi
 function findByStamp(stamp) {
   if (!stamp) return null;
+  const found = [];
   for (let i = 0; i < localStorage.length; i++) {
     const k = localStorage.key(i);
     if (!k.startsWith("progressi:") || k === SETTINGS_KEY) continue;
-    try { const v = JSON.parse(localStorage.getItem(k)); if (v?.stamp === stamp) return v; } catch { /* rovinato */ }
+    try { const v = JSON.parse(localStorage.getItem(k)); if (v?.stamp === stamp) found.push(k); } catch { /* rovinato */ }
   }
-  return null;
+  if (found.length !== 1 || state.photos.some((p) => p.key === found[0])) return null;
+  try { return JSON.parse(localStorage.getItem(found[0])); } catch { return null; }
 }
 
 // legacyK: di quanto riscalare punti salvati senza misura della foto (versioni vecchie, sempre a 1600 px)
@@ -818,8 +900,9 @@ async function makePhoto(key, name, baseBlob, date, stamp = "", legacyK = 1) {
     use: saved?.use ?? null, auto: saved?.auto ?? null, lm: saved?.lm ?? null, tweak: saved?.tweak ?? null,
     ref: state.refKeys.has(key),
   };
-  // Punti di fronte messi con l'altro schema (capezzoli / collo e ombelico): da rifare
-  if (p.pose === "front" && p.align.length && (saved?.scheme ?? "nipples") !== settings.scheme) {
+  // Punti messi con l'altra scelta (di fronte: capezzoli / collo e ombelico; di lato: capezzolo / petto): da rifare
+  const oldScheme = p.pose === "front" ? saved?.scheme ?? "nipples" : p.pose === "side" ? saved?.sideScheme ?? settings.sideScheme : null;
+  if (oldScheme && p.align.length && oldScheme !== settings[POINT_CHOICES[p.pose].key]) {
     p.align = []; p.noThird = false; p.auto = null; p.tweak = null;
   }
   await renderProc(p);
@@ -854,8 +937,8 @@ async function addFiles(files) {
     const key = `progressi:${file.name}:${file.size}`;
     if (state.photos.some((p) => p.key === key)) continue;
     try {
+      // Foto diverse con la stessa ora di scatto (raffica, stesso secondo) si tengono tutte
       const meta = await photoMeta(file);
-      if (meta.stamp && state.photos.some((p) => p.stamp === meta.stamp)) continue;
       const img = await decodeFile(file);
       const L = Math.max(img.naturalWidth || img.width, img.naturalHeight || img.height);
       const blob = await prepareBase(img, true);
@@ -879,7 +962,7 @@ async function addFiles(files) {
 
 // ------------------------------------------------------------------ riferimenti (IndexedDB, solo in questo browser)
 
-const MAX_REFS = 2;
+const MAX_REFS = 2; // per posa
 function idb(mode, fn) {
   return new Promise((resolve, reject) => {
     const open = indexedDB.open("progressi", 1);
@@ -922,7 +1005,9 @@ async function loadRefs() {
   try { refs = (await idb("readonly", (s) => s.getAll())) || []; } catch { return; }
   for (const r of refs) {
     state.refKeys.add(r.key);
-    const open = state.photos.find((p) => p.key === r.key || (r.stamp && p.stamp === r.stamp));
+    // Prima per nome e peso; per ora di scatto solo se una sola foto aperta ce l'ha (le raffiche hanno la stessa ora)
+    const sameStamp = r.stamp ? state.photos.filter((p) => p.stamp === r.stamp) : [];
+    const open = state.photos.find((p) => p.key === r.key) || (sameStamp.length === 1 ? sameStamp[0] : null);
     if (open) { open.ref = true; state.refKeys.add(open.key); continue; }
     try {
       const img = await loadImage(r.blob);
@@ -937,8 +1022,8 @@ async function loadRefs() {
 
 function save(p) {
   const { date, pose, flip, bright, contrast, align, meas, noThird, use, auto, lm, tweak, stamp } = p;
-  const scheme = settings.scheme, dims = [p.w, p.h];
-  try { localStorage.setItem(p.key, JSON.stringify({ date, pose, flip, bright, contrast, align, meas, noThird, use, auto, lm, tweak, scheme, dims, stamp })); } catch { /* spazio pieno */ }
+  const { scheme, sideScheme } = settings, dims = [p.w, p.h];
+  try { localStorage.setItem(p.key, JSON.stringify({ date, pose, flip, bright, contrast, align, meas, noThird, use, auto, lm, tweak, scheme, sideScheme, dims, stamp })); } catch { /* spazio pieno */ }
 }
 
 // Foto con specchio, luce e contrasto applicati. I punti sono in queste coordinate.
@@ -1006,7 +1091,6 @@ const firstTwo = (p) => {
   return POSES[p.pose].pair && a[0] > b[0] ? [b, a] : [a, b];
 };
 
-// Per ogni posa la prima foto allineata fa da riferimento: il terzo punto finisce dove sta nella sua
 // Ritocco a mano dopo l'allineamento: dimensione, rotazione e spostamento intorno al centro dei punti
 const NO_TWEAK = { s: 0, r: 0, x: 0, y: 0 }; // s in %, r in gradi, x/y in px della tela del confronto
 const hasTweak = (p) => !!p.tweak && Object.values(p.tweak).some((v) => v);
@@ -1021,6 +1105,7 @@ function withTweak(M, p) {
   };
 }
 
+// Per ogni posa la prima foto allineata (per data) fa da riferimento: il terzo punto finisce dove sta nella sua
 function computeTransforms() {
   state.photos.forEach((p) => { p.M = null; });
   state.thirds = {};
@@ -1338,6 +1423,94 @@ function autoAlign(p) {
   return true;
 }
 
+// ---- prima foto di una posa, senza foto di partenza: i punti si stimano da spalle e anche e si rifiniscono sull'immagine
+//
+// Posizioni lungo il busto, misurate su foto di prova: y in frazioni della distanza spalle → anche (T, dal centro delle
+// spalle), x dei capezzoli in frazioni della larghezza delle spalle. Sono stime: la foto resta "da controllare".
+const SEED = { nipY: 0.26, nipX: 0.29, navelY: 0.715, neckY: -0.09, c7Y: -0.06, lowBackY: 0.67, chestY: 0.26 };
+
+function torsoAxis(p) {
+  const pts = (ids) => ids.filter((i) => seen(p, i)).map((i) => [p.lm[i][0], p.lm[i][1]]);
+  const sh = pts(LM.shoulders), hp = pts(LM.hips);
+  if (!sh.length || !hp.length) return null;
+  const avg = (a) => [a.reduce((s, q) => s + q[0], 0) / a.length, a.reduce((s, q) => s + q[1], 0) / a.length];
+  const s = avg(sh), h = avg(hp), T = dist(s, h);
+  if (T < 30) return null;
+  const d = [(h[0] - s[0]) / T, (h[1] - s[1]) / T], r = [d[1], -d[0]]; // d verso le anche, r verso destra nella foto
+  // ux in pixel verso destra, uy in frazioni di T verso le anche
+  const at = (ux, uy) => [s[0] + r[0] * ux + d[0] * uy * T, s[1] + r[1] * ux + d[1] * uy * T];
+  return { s, T, r, at, sw: sh.length === 2 ? dist(sh[0], sh[1]) : 0, pair: sh.length === 2 && hp.length === 2 };
+}
+
+// Macchia scura e tonda (ombelico, capezzolo) più vicina alla stima: null se non c'è niente di chiaro
+function spotNear(cm, k, pred, radius) {
+  const c = pred.map((v) => v * k);
+  const cands = blobCandidates(cm, [c], radius * k);
+  if (!cands.length) return null;
+  const maxV = Math.max(...cands.map((q) => q[2]));
+  const best = cands.map((q) => ({ q, cost: dist(q, c) / (radius * k) - q[2] / maxV })).sort((a, b) => a.cost - b.cost)[0].q;
+  return [best[0] / k, best[1] / k];
+}
+
+// Bordo del corpo lungo una riga (di lato): il salto di luce più forte andando dal busto verso dove guarda
+function bodyEdge(p, from, dir, maxLen) {
+  const k = Math.min(1, 200 / maxLen), im = workCopy(p, k);
+  let best = null, prev = null;
+  for (let t = maxLen * 0.08; t <= maxLen; t += 1 / k) {
+    const v = sampleAt(im, (from[0] + dir[0] * t) * k, (from[1] + dir[1] * t) * k);
+    if (Number.isNaN(v)) break;
+    if (prev != null && (!best || Math.abs(v - prev) > best.g)) best = { g: Math.abs(v - prev), t };
+    prev = v;
+  }
+  return best && best.g > 4 ? best.t : null;
+}
+
+function seedAlign(p) {
+  const ax = torsoAxis(p);
+  if (!ax) return null;
+  const { at, T, sw } = ax;
+  const round = (pts) => pts.map((q) => q.map((v) => Math.round(v * 10) / 10));
+  if (p.pose === "front" || p.pose === "back") {
+    if (!ax.pair) return null;
+    if (p.pose === "back") return { align: round([at(0, SEED.c7Y), at(0, SEED.lowBackY)]), conf: 0.4 };
+    const nipD = 2 * SEED.nipX * sw, k = WORK / nipD;
+    const cm = colorCopy(p.proc, k);
+    const navelGuess = at(0, SEED.navelY);
+    const navel = handSpot(p) === "belly" ? null : spotNear(cm, k, navelGuess, T * 0.09);
+    if (settings.scheme === "neckNavel") return { align: round([at(0, SEED.neckY), navel || navelGuess]), conf: navel ? 0.5 : 0.35 };
+    const pred = [at(-SEED.nipX * sw, SEED.nipY), at(SEED.nipX * sw, SEED.nipY)].map((q) => q.map((v) => v * k));
+    const bp = bestPair(blobCandidates(cm, pred, WORK * 0.5), pred[0], pred[1]);
+    // La coppia trovata deve somigliare a una coppia di capezzoli: distanza e inclinazione vicine alla stima
+    const ok = bp && Math.abs(Math.log(dist(bp.L, bp.R) / WORK)) < 0.35 && Math.abs(Math.atan2(bp.R[1] - bp.L[1], bp.R[0] - bp.L[0]) - Math.atan2(pred[1][1] - pred[0][1], pred[1][0] - pred[0][0])) < 0.2;
+    const nips = (ok ? [bp.L, bp.R] : pred).map((q) => [q[0] / k, q[1] / k]);
+    return { align: round(navel ? [...nips, navel] : nips), conf: ok ? 0.6 : 0.3, noThird: !navel };
+  }
+  // Di lato: si guarda dalla parte del naso; i punti stanno sul davanti del busto, appena dentro il bordo
+  const nose = seen(p, LM.nose) ? p.lm[LM.nose] : null;
+  if (!nose || Math.abs(nose[0] - ax.s[0]) < T * 0.03) return null;
+  const sign = Math.sign(nose[0] - ax.s[0]), dir = ax.r.map((v) => v * sign);
+  const front = (uy, inset, fallback) => {
+    const c = at(0, uy), t = bodyEdge(p, c, dir, T * 0.8);
+    return { pt: [c[0] + dir[0] * ((t ?? fallback * T) - inset * T), c[1] + dir[1] * ((t ?? fallback * T) - inset * T)], found: t != null };
+  };
+  const chest = front(SEED.chestY, settings.sideScheme === "nipple" ? 0.06 : 0.015, 0.32);
+  const belly = front(SEED.navelY, 0.04, 0.26);
+  let first = chest.pt, navel = belly.pt;
+  const k = WORK / (T * 0.42), cm = colorCopy(p.proc, k);
+  if (settings.sideScheme === "nipple") first = spotNear(cm, k, chest.pt, T * 0.07) || first;
+  if (handSpot(p) !== "belly") navel = spotNear(cm, k, belly.pt, T * 0.06) || navel;
+  return { align: round([first, navel]), conf: chest.found && belly.found ? 0.4 : 0.25 };
+}
+
+// Foto da cui partire per una posa che non ne ha: la più adatta (mani lontane dal busto, poi la più vecchia)
+function seedCandidates(k) {
+  const group = state.photos.filter((p) => p.pose === k);
+  // Già una foto di partenza, una in attesa di controllo, o punti che stai mettendo tu: niente da fare
+  if (anchorsFor(k).length || group.some((p) => p.auto?.seed || p.handMade || (p.align.length && !p.auto))) return [];
+  return group.filter((p) => !p.align.length && p.lm?.length && !p.autoSkip && !p.seedTried)
+    .sort((a, b) => (handSpot(a) ? 1 : 0) - (handSpot(b) ? 1 : 0) || byDate(a, b));
+}
+
 // Coda: posa per le foto nuove, poi allineamento automatico di quelle senza punti
 let queueBusy = false;
 async function processQueue() {
@@ -1365,7 +1538,33 @@ async function processQueue() {
       changedAny = true;
     }
     const unsure = pending.filter((p) => p.auto && !p.auto.sure).length;
-    if (pending.length) toast(`${done === 1 ? "1 foto allineata" : `${done} foto allineate`} in automatico${unsure ? `: ${unsure} da controllare` : ""}${done < pending.length ? `, ${pending.length - done} da fare a mano` : ""}`);
+    // In automatico anche la prima foto di ogni posa: i punti si stimano e tu li controlli. Le altre partono da lei
+    const seeded = [];
+    if (settings.detect === "auto") {
+      for (const k of POSE_KEYS) {
+        for (const p of seedCandidates(k)) {
+          p.seedTried = true;
+          await new Promise((r) => setTimeout(r));
+          const r = seedAlign(p);
+          if (!r) continue;
+          p.align = r.align;
+          p.noThird = !!r.noThird || r.align.length < POSES[k].align.length;
+          p.auto = { conf: r.conf, sure: false, seed: true };
+          save(p);
+          seeded.push(p);
+          changedAny = true;
+          break;
+        }
+      }
+    }
+    if (seeded.length) {
+      // Se stai guardando una foto ancora senza punti della stessa posa, passi a quella da controllare
+      const cur = state.selected;
+      const show = seeded.find((p) => !cur || (cur.pose === p.pose && !cur.align.length) || cur === p);
+      if (show && state.view === "prepare") { state.selected = show; state.mode = "align"; }
+      const p = show || seeded[0];
+      toast(`Ho trovato i punti nella foto ${POSES[p.pose].label.toLowerCase()} del ${labelOf(p)}: controllali, poi allineo le altre${seeded.length > 1 ? `. Da controllare anche: ${seeded.filter((q) => q !== p).map((q) => POSES[q.pose].label.toLowerCase()).join(", ")}` : ""}`);
+    } else if (pending.length) toast(`${done === 1 ? "1 foto allineata" : `${done} foto allineate`} in automatico${unsure ? `: ${unsure} da controllare` : ""}${done < pending.length ? `, ${pending.length - done} da fare a mano` : ""}`);
   } catch {
     toast(location.protocol === "file:" ? "Il riconoscimento della posa non parte: da file serve internet la prima volta. Puoi allineare a mano." : "Il riconoscimento della posa non parte: riprova più tardi. Puoi allineare a mano.");
     state.photos.forEach((p) => { if (!p.lm) p.lm = []; });
@@ -1442,14 +1641,37 @@ function drawPoints(ctx, pts, color, labels, r) {
   });
 }
 
+// Parte della foto mostrata per mettere i punti: tutta, o solo il busto (sul telefono di partenza: così i punti si mettono bene).
+// I punti restano sempre in coordinate della foto intera
+state.zoom = MOBILE;
+let view = { x: 0, y: 0, w: 1, h: 1 };
+function torsoView(p) {
+  const W = p.proc.width, H = p.proc.height;
+  const ax = p.lm?.length ? torsoAxis(p) : null;
+  if (!ax) return null;
+  // Misure delle gambe: serve tutta la foto; glutei: un po' più in basso delle anche
+  const ms = state.mode === "measure" ? POSES[p.pose].measures : [];
+  if (ms.some((id) => MEASURES[p.pose][id].full)) return null;
+  const T = ax.T, top = ax.s[1] - 0.4 * T, bottom = ax.s[1] + (settings.framing === "full" || ms.includes("glutes") ? 1.4 : 1.2) * T;
+  const half = Math.max((ax.sw || T * 0.7) * 0.9, (bottom - top) * 0.38);
+  const x0 = Math.max(0, ax.s[0] - half), x1 = Math.min(W, ax.s[0] + half), y0 = Math.max(0, top), y1 = Math.min(H, bottom);
+  if (x1 - x0 > W * 0.85 && y1 - y0 > H * 0.85) return null; // il busto è già quasi tutta la foto
+  return { x: Math.round(x0), y: Math.round(y0), w: Math.round(x1 - x0), h: Math.round(y1 - y0) };
+}
 function drawEditor() {
   const p = state.selected;
   if (!p) return;
-  if (editCanvas.width !== p.proc.width || editCanvas.height !== p.proc.height) {
-    editCanvas.width = p.proc.width;
-    editCanvas.height = p.proc.height;
+  const torso = torsoView(p);
+  view = state.zoom && torso ? torso : { x: 0, y: 0, w: p.proc.width, h: p.proc.height };
+  const zb = $("#zoomBtn");
+  zb.hidden = !torso || !$("#pointPick").hidden;
+  zb.textContent = state.zoom ? "Tutta la foto" : "Ingrandisci il busto";
+  if (editCanvas.width !== view.w || editCanvas.height !== view.h) {
+    editCanvas.width = view.w;
+    editCanvas.height = view.h;
   }
   const ctx = editCanvas.getContext("2d");
+  ctx.setTransform(1, 0, 0, 1, -view.x, -view.y);
   ctx.drawImage(p.proc, 0, 0);
   const r = pointRadius();
   ctx.lineWidth = r / 2;
@@ -1506,39 +1728,127 @@ function updatePrepare() {
   $("#undoBtn").disabled = !anyDone;
   $("#clearBtn").disabled = !anyDone;
   $("#skipBtn").hidden = !(state.mode === "align" && pose.align[2]?.optional && p.align.length === 2 && !p.noThird);
-  const refs = state.photos.filter((q) => q.ref).length;
+  const refs = state.photos.filter((q) => q.ref && q.pose === p.pose).length;
   $("#refBtn").setAttribute("aria-pressed", p.ref);
   $("#refBtn span").textContent = p.ref ? "Riferimento · togli" : "Usa come riferimento";
   $("#refBtn").disabled = !p.ref && refs >= MAX_REFS;
-  $("#refBtn").title = $("#refBtn").disabled ? `Hai già ${MAX_REFS} riferimenti: togline uno` : "La foto resta salvata solo in questo browser";
+  $("#refBtn").title = $("#refBtn").disabled ? `Hai già ${MAX_REFS} riferimenti ${POSES[p.pose].label.toLowerCase()}: togline uno` : "La foto resta salvata solo in questo browser";
   const ref = refFor(p.pose);
   const tips = ref && ref !== p ? coachTips(p, ref) : null;
   $("#coachSection").hidden = !tips;
   if (tips) $("#coachTips").innerHTML = tips.length ? tips.map((t) => `<li>${esc(t)}</li>`).join("") : '<li class="ok">Inquadratura uguale al riferimento.</li>';
-  $("#confirmBtn").hidden = !(state.mode === "align" && p.auto && !p.auto.sure);
-  $("#autoBtn").hidden = !(state.mode === "align" && p.lm?.length && anchorsFor(p.pose).some((a) => a !== p));
+  const toCheck = state.mode === "align" && p.auto && !p.auto.sure;
+  $("#confirmBtn").hidden = !toCheck;
+  $("#autoBtn").hidden = !(state.mode === "align" && p.lm?.length && (settings.detect === "auto" || anchorsFor(p.pose).some((a) => a !== p)));
+  $("#pointsBtn").hidden = !(state.mode === "align" && POINT_CHOICES[p.pose]);
+  // In attesa: la prima foto della posa è da controllare, poi si allinea anche questa
+  const waitFor = !p.align.length && settings.detect === "auto" ? state.photos.find((q) => q !== p && q.pose === p.pose && q.auto?.seed) : null;
   $("#stepNote").innerHTML = state.mode === "align"
-    ? (p.auto ? (p.auto.sure ? "Punti messi in automatico. Se sono sbagliati, trascinali." : "Punti messi in automatico ma incerti: se sono al posto giusto premi Sono giusti, se no trascinali. Finché non li controlli la foto non conta nell'analisi.")
+    ? (p.auto?.seed ? "Punti trovati da soli: è la prima foto di questa posa, quindi controllali. Se sono giusti premi <b>Sono giusti</b>, se no trascinali. Poi allineo le altre su questa."
+      : p.auto ? (p.auto.sure ? "Punti messi in automatico. Se sono sbagliati, trascinali." : "Punti messi in automatico ma incerti: se sono al posto giusto premi Sono giusti, se no trascinali. Finché non li controlli la foto non conta nell'analisi.")
+      : waitFor ? `Questa la allineo io appena controlli i punti della foto del ${esc(labelOf(waitFor))}. Oppure metti tu i punti qui.`
       : "Usa gli stessi punti in tutte le foto della stessa posa. Trascina un punto per correggerlo.")
     : "Le misure sono facoltative. Cosa misurare si sceglie in Impostazioni.";
 
   const coach = $("#coach");
-  if (current >= 0) {
+  const touchHint = (h) => MOBILE ? h.replace(/Clicca/g, "Tocca").replace(/clicca/g, "tocca") : h;
+  if (toCheck) {
+    coach.className = "coach check";
+    coach.innerHTML = MOBILE ? "Controlla i punti. Giusti? Premi <b>Sono giusti</b>. Se no, trascinali col dito." : "Controlla i punti. Giusti? Premi <b>Sono giusti</b>. Se no, trascinali.";
+  } else if (state.mode === "align" && !p.align.length && settings.detect === "auto" && !p.lm) {
+    coach.className = "coach";
+    coach.textContent = "Cerco i punti da solo… Puoi anche metterli tu.";
+  } else if (current >= 0) {
     coach.className = `coach ${state.mode}`;
-    const hint = MOBILE ? steps[current].hint.replace(/Clicca/g, "Tocca").replace(/clicca/g, "tocca") : steps[current].hint;
-    coach.innerHTML = `${current + 1}/${steps.length} · ${hint}${MOBILE && !anyDone ? " Tieni il dito e trascina: il punto si fissa quando lo alzi." : ""}`;
+    coach.innerHTML = `${current + 1}/${steps.length} · ${touchHint(steps[current].hint)}${MOBILE && !anyDone ? " Tieni il dito e trascina: il punto si fissa quando lo alzi." : ""}`;
   } else {
     coach.className = "coach done";
     coach.textContent = state.mode === "align"
       ? (measureComplete(p) ? "Foto pronta" : "Foto allineata · le misure sono facoltative")
       : steps.length ? "Misure fatte" : "Nessuna misura scelta";
   }
+  // Un solo blocco di testo dentro il suggerimento (che sul telefono è centrato con flex)
+  coach.innerHTML = `<span>${coach.innerHTML}</span>`;
+  renderPick(p);
+  syncEditBar();
 }
+
+// ---- scelta dei punti (in manuale, sulla prima foto di una posa; oppure con Cambia punti)
+const PICK_FIG = {
+  torso: '<path d="M17 6c4-2 22-2 26 0l7 8-3 24c-1 10-1 18 0 28H13c1-10 1-18 0-28l-3-24z"/>',
+  side: '<path d="M24 4c8 1 13 6 15 15 2 7-1 12 0 20 1 9-1 18-3 27H20c-1-11-3-26-2-40 0-12 2-20 6-22z"/>',
+};
+const PICK_DOTS = {
+  front: { nipples: [[22, 24], [38, 24], [30, 46, 1]], neckNavel: [[30, 8], [30, 46]] },
+  side: { nipple: [[37, 24], [38, 46]], chest: [[40, 22], [38, 46]] },
+};
+const needsPick = (p) => state.view === "prepare" && state.mode === "align" && !!POINT_CHOICES[p.pose]
+  && (state.picking === p.pose || (settings.detect === "manual" && !p.align.length && !state.picked.has(p.pose)
+    && !state.photos.some((q) => q.pose === p.pose && q.align.length >= 2)));
+
+function renderPick(p) {
+  const box = $("#pointPick"), show = needsPick(p);
+  box.hidden = !show;
+  $("#coach").hidden = show;
+  if (!show) { box.dataset.for = ""; return; }
+  const justShown = box.dataset.for !== `${p.key}|${state.picking}`;
+  box.dataset.for = `${p.key}|${state.picking}`;
+  const k = p.pose, choice = POINT_CHOICES[k], current = settings[choice.key];
+  const changing = state.picking === k;
+  const aligned = state.photos.filter((q) => q.pose === k && q.align.length >= 2).length;
+  const dot = ([x, y, opt]) => `<circle cx="${x}" cy="${y}" r="3.2" ${opt ? 'fill="none" stroke="#4cc2ff" stroke-width="1.6"' : 'fill="#4cc2ff"'}/>`;
+  const html = `<div class="pick-card" role="dialog" aria-modal="true" aria-labelledby="pickTitle">
+      <h3 id="pickTitle">Quali punti usi per le foto ${esc(POSES[k].label.toLowerCase())}?</h3>
+      <p>${changing ? "Valgono per tutte le foto di questa posa." : "Li metti tu in questa foto. Le altre foto di questa posa le allineo io sugli stessi punti."}</p>
+      <div class="pick-opts">${Object.entries(choice.options).map(([v, o]) => `
+        <button type="button" class="pick-opt" data-pick="${v}" aria-pressed="${changing && v === current}">
+          <svg viewBox="0 0 60 70" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round">${PICK_FIG[k === "side" ? "side" : "torso"]}</g>${PICK_DOTS[k][v].map(dot).join("")}</svg>
+          <span><b>${esc(o.label)}</b><small>${esc(o.sub)}</small></span>
+        </button>`).join("")}</div>
+      ${changing && aligned ? `<p class="warn">Se cambi, le ${aligned === 1 ? "foto già allineata va rifatta" : `${aligned} foto già allineate vanno rifatte`}. Le misure restano.</p>` : ""}
+      ${changing ? '<button type="button" class="btn ghost" id="pickCancel">Annulla</button>' : ""}
+    </div>`;
+  // Uguale a prima: non si ricostruisce, così il focus resta dov'è
+  if (box.lastHtml !== html) {
+    box.lastHtml = html;
+    box.innerHTML = html;
+    box.querySelectorAll("[data-pick]").forEach((b) => b.addEventListener("click", () => {
+      state.picked.add(k);
+      state.picking = null;
+      if (settings[choice.key] !== b.dataset.pick) applySettings({ ...settings, [choice.key]: b.dataset.pick });
+      else refresh();
+    }));
+    $("#pickCancel")?.addEventListener("click", () => { state.picking = null; refresh(); });
+  }
+  if (justShown) box.querySelector(".pick-opt")?.focus({ preventScroll: true });
+}
+
+// ---- barra sotto la foto, sul telefono: gli stessi pulsanti del pannello, a portata di pollice
+function syncEditBar() {
+  const bar = $("#editBar");
+  let any = false;
+  bar.querySelectorAll("[data-proxy]").forEach((b) => {
+    const src = $(`#${b.dataset.proxy}`);
+    b.hidden = src.hidden || !$("#pointPick").hidden;
+    b.disabled = src.disabled;
+    any ||= !b.hidden;
+  });
+  bar.hidden = !any;
+}
+$("#editBar").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-proxy]");
+  if (b && !b.disabled) $(`#${b.dataset.proxy}`).click();
+});
+$("#pointsBtn").addEventListener("click", () => { state.picking = state.selected.pose; refresh(); });
+$("#zoomBtn").addEventListener("click", () => { state.zoom = !state.zoom; drawEditor(); });
 
 function toCanvas(e, canvas) {
   const rect = canvas.getBoundingClientRect();
   return [(e.clientX - rect.left) * canvas.width / rect.width, (e.clientY - rect.top) * canvas.height / rect.height];
 }
+
+// Punto della foto intera sotto il puntatore (la tela può mostrare solo il busto)
+const toPhoto = (e) => { const [x, y] = toCanvas(e, editCanvas); return [x + view.x, y + view.y]; };
 
 // Lente d'ingrandimento accanto al puntatore, per mettere i punti con precisione
 function showLoupe(e) {
@@ -1584,7 +1894,7 @@ let drag = null;
 editCanvas.addEventListener("pointerdown", (e) => {
   const p = state.selected;
   if (!p) return;
-  const q = toCanvas(e, editCanvas);
+  const q = toPhoto(e);
   const reach = pointRadius() * (e.pointerType === "mouse" ? 3 : 4.5);
   drag = null;
   const hit = { align: () => p.align.forEach((pt, i) => { if (!drag && dist(pt, q) < reach) drag = { set: "align", i }; }),
@@ -1592,7 +1902,10 @@ editCanvas.addEventListener("pointerdown", (e) => {
   hit[state.mode]();
   hit[state.mode === "align" ? "measure" : "align"]();
   if (drag) {
+    drag.x0 = e.clientX;
+    drag.y0 = e.clientY;
     editCanvas.setPointerCapture(e.pointerId);
+    showLoupe(e);
     return;
   }
   // Col dito il punto nuovo segue il dito finché non lo alzi: si mette al posto giusto guardando la lente
@@ -1609,24 +1922,35 @@ editCanvas.addEventListener("pointerdown", (e) => {
   } else if (p.align.length < currentSteps(p).length) {
     p.align.push(q);
     p.auto = null;
+    p.handMade = true;
     if (touch) { drag = { set: "align", i: p.align.length - 1 }; editCanvas.setPointerCapture(e.pointerId); drawEditor(); }
     else changed(p);
     showLoupe(e);
   }
 });
 editCanvas.addEventListener("pointermove", (e) => {
-  if (drag) {
-    if (drag.set === "align") state.selected.align[drag.i] = toCanvas(e, editCanvas);
-    else state.selected.meas[drag.id][drag.i] = toCanvas(e, editCanvas);
+  // Un punto esistente si sposta solo se il puntatore si muove davvero: toccarlo per guardarlo non lo cambia
+  if (drag && !drag.moved && (drag.x0 == null || Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) > 4)) drag.moved = true;
+  if (drag?.moved) {
+    if (drag.set === "align") state.selected.align[drag.i] = toPhoto(e);
+    else state.selected.meas[drag.id][drag.i] = toPhoto(e);
     drawEditor();
   }
   if (e.pointerType === "mouse" || drag) showLoupe(e);
 });
+// Tocco lungo sulla foto: niente menu "salva immagine" né selezione
+editCanvas.addEventListener("contextmenu", (e) => e.preventDefault());
 editCanvas.addEventListener("pointerup", (e) => {
-  if (e.pointerType !== "mouse") { loupe.hidden = true; $("#coach").classList.remove("away"); }
+  if (e.pointerType !== "mouse") {
+    loupe.hidden = true;
+    $("#coach").classList.remove("away");
+    if (drag && (drag.moved || drag.x0 == null)) navigator.vibrate?.(8); // punto fissato (solo dove il telefono lo permette)
+  }
   if (!drag) return;
-  if (drag.set === "align") state.selected.auto = null;
+  const moved = drag.moved || drag.x0 == null; // x0 manca per i punti nuovi messi col dito
+  if (drag.set === "align" && moved) state.selected.auto = null;
   drag = null;
+  if (!moved) { refresh(); return; }
   changed(state.selected);
 });
 editCanvas.addEventListener("pointerleave", () => { if (!drag) loupe.hidden = true; });
@@ -1661,6 +1985,8 @@ $("#poseInput").addEventListener("change", (e) => {
   p.noThird = false;
   p.auto = null;
   p.autoSkip = false;
+  p.seedTried = false;
+  p.handMade = false;
   p.tweak = null;
   state.mode = "align";
   if (hadPoints) toast("Posa cambiata: i punti di questa foto sono da rifare");
@@ -1695,7 +2021,8 @@ $("#resetAdjust").addEventListener("click", async () => {
 $("#refBtn").addEventListener("click", () => setRef(state.selected, !state.selected.ref));
 $("#confirmBtn").addEventListener("click", () => {
   const p = state.selected;
-  p.auto = { ...p.auto, sure: true };
+  // La prima foto controllata vale come allineata a mano: da lei partono le altre
+  p.auto = p.auto?.seed ? null : { ...p.auto, sure: true };
   changed(p);
 });
 $("#autoBtn").addEventListener("click", () => {
@@ -1704,6 +2031,8 @@ $("#autoBtn").addEventListener("click", () => {
   p.noThird = false;
   p.auto = null;
   p.autoSkip = false;
+  p.seedTried = false;
+  p.handMade = false;
   p.tweak = null;
   changed(p);
 });
@@ -1713,7 +2042,7 @@ $("#skipBtn").addEventListener("click", () => { state.selected.noThird = true; c
 $("#undoBtn").addEventListener("click", undo);
 $("#clearBtn").addEventListener("click", () => {
   const p = state.selected;
-  if (state.mode === "align") { p.align = []; p.noThird = false; p.auto = null; p.autoSkip = true; p.tweak = null; }
+  if (state.mode === "align") { p.align = []; p.noThird = false; p.auto = null; p.autoSkip = true; p.handMade = true; p.tweak = null; }
   else POSES[p.pose].measures.forEach((id) => delete p.meas[id]);
   changed(p);
 });
@@ -1732,12 +2061,14 @@ function undo() {
   p.align.pop();
   p.auto = null;
   p.autoSkip = true;
+  p.handMade = true;
   if (p.align.length < 2) p.noThird = false;
   changed(p);
 }
 
 document.addEventListener("keydown", (e) => {
   if (["INPUT", "SELECT"].includes(e.target.tagName)) return;
+  if (e.key === "Escape" && state.picking) { state.picking = null; refresh(); return; }
   if ((e.metaKey || e.ctrlKey) && e.key === "z" && state.view === "prepare") {
     e.preventDefault();
     undo();
@@ -2060,7 +2391,7 @@ function chart(rows, title) {
 
 // ------------------------------------------------------------------ analisi
 //
-// Tutto calcolato qui, sulle foto già allineate (tela 600×800, capezzoli a 140 px):
+// Tutto calcolato qui, sulle foto già allineate (tela 600×800 col busto, 600×960 con la figura intera: vedi LAYOUTS):
 // 1. affidabilità: ogni foto contro le altre della stessa posa (inclinazione, distanza,
 //    angolazione, luce). Le foto molto diverse escono dal conto da sole.
 // 2. tendenza: retta ai minimi quadrati su tutte le foto, non solo prima e ultima.
@@ -2401,7 +2732,7 @@ function drawDiff(ctx, A, B, an) {
   ctx.restore();
   ctx.filter = "none";
   if (!an.zones.length) {
-    tag(ctx, "Differenze", "servono le misure del petto", 14, "left");
+    tag(ctx, "Differenze", !settings.definition ? "definizione spenta nelle Impostazioni" : "servono le misure di petto o pancia", 14, "left");
     return;
   }
   const mA = mapsOf(A), mB = mapsOf(B);
@@ -2627,9 +2958,14 @@ const WHO_SUB = {
 function openSettings(first = false) {
   const dlg = $("#settingsDialog");
   let draft = structuredClone(settings);
-  const aligned = state.photos.filter((p) => p.pose === "front" && p.align.length >= 2).length;
+  const alignedIn = (k) => state.photos.filter((p) => p.pose === k && p.align.length >= 2).length;
   const radios = (name, options, value, subs) => `<div class="choice">${Object.entries(options).map(([k, o]) =>
     `<label><input type="radio" name="${name}" value="${k}" ${k === value ? "checked" : ""}><b>${esc(o.label || o)}</b><span>${esc(subs ? subs[k] : o.sub)}</span></label>`).join("")}</div>`;
+  // Foto già allineate che, cambiando i punti, vanno rifatte
+  const changedWarn = () => {
+    const n = Object.entries(POINT_CHOICES).reduce((s, [k, c]) => s + (draft[c.key] !== settings[c.key] ? alignedIn(k) : 0), 0);
+    return n ? `<p class="warn">Cambiando i punti, ${n === 1 ? "la foto già allineata va riallineata" : `le ${n} foto già allineate vanno riallineate`}: li ritrovo io e tu li controlli. Le misure restano.</p>` : "";
+  };
   const render = () => {
     const chips = POSE_KEYS_ALL.map((k) => `<div class="pose">${POSE_LABELS[k]}</div><div class="opts">${Object.entries(MEASURES[k]).map(([id, m]) => {
       const off = m.full && draft.framing !== "full";
@@ -2638,9 +2974,13 @@ function openSettings(first = false) {
     dlg.querySelector(".body").innerHTML = `
       <fieldset><legend>Chi usa l'app</legend>${radios("who", WHO, draft.who, WHO_SUB)}</fieldset>
       <fieldset><legend>Come fai le foto</legend>${radios("framing", FRAMINGS, draft.framing)}</fieldset>
-      <fieldset><legend>Punti per allineare le foto di fronte</legend>${radios("scheme", SCHEMES, draft.scheme)}
-        <p class="warn" id="schemeWarn" ${draft.scheme !== settings.scheme && aligned ? "" : "hidden"}>Cambiando i punti, le ${aligned} foto di fronte già allineate vanno riallineate: ne rifai una a mano, le altre le rifà l'automatico. Le misure restano.</p></fieldset>
-      <fieldset><legend>Cosa misurare <button type="button" class="link" id="presetBtn">Ripristina quelle consigliate</button></legend><div class="checks">${chips}</div></fieldset>
+      <fieldset><legend>Rilevamento dei punti</legend>${radios("detect", DETECTS, draft.detect)}</fieldset>
+      ${draft.detect === "auto" ? `<fieldset><legend>Punti per allineare</legend>
+        <div class="pose-label">Di fronte</div>${radios("scheme", SCHEMES, draft.scheme)}
+        <div class="pose-label">Di lato</div>${radios("sideScheme", SIDE_SCHEMES, draft.sideScheme)}
+        ${changedWarn()}</fieldset>`
+        : `<fieldset><legend>Punti per allineare</legend><p class="note">Li scegli sulla prima foto di ogni posa, quando metti i punti. Per cambiarli dopo: <b>Cambia punti</b>, sotto l'elenco dei punti.</p></fieldset>`}
+      <fieldset><legend>Cosa misurare <button type="button" class="link" id="presetBtn">Ripristina quelle consigliate</button></legend><div class="checks">${chips}</div>${draft.framing !== "full" ? '<p class="note">Coscia e polpaccio si misurano solo con la figura intera (in “Come fai le foto”).</p>' : ""}</fieldset>
       <fieldset><legend>Definizione</legend><label class="switch"><span>Stima la definizione muscolare<small>Ombre fra i muscoli di petto, addome e schiena. Spegnila se fai le foto con la maglietta.</small></span><input type="checkbox" id="defInput" ${draft.definition ? "checked" : ""}></label></fieldset>
       <fieldset><legend>I tuoi progressi</legend>
         <p class="note">Punti, misure e impostazioni stanno solo in questo browser. Salvali in un file per non perderli o per passarli su un altro dispositivo. Le foto non ci sono: quando apri il file, aggiungi di nuovo le foto e i punti tornano.${MOBILE ? " Su iPhone Safari cancella i dati dei siti che non apri da una settimana: aggiungi la pagina alla schermata Home o salva spesso." : ""}</p>
@@ -2657,6 +2997,7 @@ function openSettings(first = false) {
     dlg.querySelectorAll('input[name="who"]').forEach((i) => i.addEventListener("change", () => {
       draft.who = i.value;
       draft.scheme = i.value === "male" ? "nipples" : "neckNavel";
+      draft.sideScheme = i.value === "male" ? "nipple" : "chest";
       draft.measures = presetMeasures(draft.who, draft.framing);
       render();
     }));
@@ -2666,7 +3007,9 @@ function openSettings(first = false) {
       if (preset) draft.measures = presetMeasures(draft.who, draft.framing);
       render();
     }));
-    dlg.querySelectorAll('input[name="scheme"]').forEach((i) => i.addEventListener("change", () => { draft.scheme = i.value; render(); }));
+    for (const name of ["scheme", "sideScheme", "detect"]) {
+      dlg.querySelectorAll(`input[name="${name}"]`).forEach((i) => i.addEventListener("change", () => { draft[name] = i.value; render(); }));
+    }
     dlg.querySelectorAll("[data-pose]").forEach((i) => i.addEventListener("change", () => {
       const list = new Set(draft.measures[i.dataset.pose] || []);
       if (i.checked) list.add(i.dataset.id); else list.delete(i.dataset.id);
@@ -2691,16 +3034,21 @@ function openSettings(first = false) {
 }
 
 function applySettings(next) {
-  const schemeChanged = next.scheme !== settings.scheme;
+  const changedPoses = Object.keys(POINT_CHOICES).filter((k) => next[POINT_CHOICES[k].key] !== settings[POINT_CHOICES[k].key]);
   settings = next;
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* spazio pieno */ }
   buildPoses();
-  if (schemeChanged) {
-    state.photos.filter((p) => p.pose === "front").forEach((p) => {
-      p.align = []; p.noThird = false; p.auto = null; p.autoSkip = false; p.tweak = null;
+  let redo = 0;
+  for (const k of changedPoses) {
+    state.photos.filter((p) => p.pose === k).forEach((p) => {
+      if (p.align.length) redo++;
+      p.align = []; p.noThird = false; p.auto = null; p.autoSkip = false; p.seedTried = false; p.handMade = false; p.tweak = null;
       save(p);
     });
-    toast("Punti cambiati: allinea a mano una foto di fronte, le altre le faccio io");
+  }
+  if (redo) {
+    const where = changedPoses.map((k) => POSES[k].label.toLowerCase()).join(" e ");
+    toast(settings.detect === "auto" ? `Punti cambiati: li ritrovo nelle foto ${where}, tu controlli la prima` : `Punti cambiati: mettili in una foto ${where}, le altre le faccio io`);
   }
   mapCache.clear();
   statsCache.clear();
@@ -2766,9 +3114,11 @@ function cleanSettings(v) {
   if (!v || typeof v !== "object") return d;
   const measures = {};
   for (const k of POSE_KEYS_ALL) measures[k] = Array.isArray(v.measures?.[k]) ? Object.keys(MEASURES[k]).filter((id) => v.measures[k].includes(id)) : d.measures[k];
+  const who = WHO[v.who] ? v.who : d.who, dw = defaultSettings(who);
   return {
-    who: WHO[v.who] ? v.who : d.who, framing: FRAMINGS[v.framing] ? v.framing : d.framing,
-    scheme: SCHEMES[v.scheme] ? v.scheme : d.scheme, measures, definition: v.definition !== false,
+    who, framing: FRAMINGS[v.framing] ? v.framing : d.framing, detect: DETECTS[v.detect] ? v.detect : d.detect,
+    scheme: SCHEMES[v.scheme] ? v.scheme : dw.scheme, sideScheme: SIDE_SCHEMES[v.sideScheme] ? v.sideScheme : dw.sideScheme,
+    measures, definition: v.definition !== false,
   };
 }
 function cleanPhoto(v) {
@@ -2783,10 +3133,11 @@ function cleanPhoto(v) {
     flip: v.flip === true, bright: clampNum(v.bright, -50, 50), contrast: clampNum(v.contrast, -50, 50),
     align: pts(v.align, 3), meas, noThird: v.noThird === true,
     use: typeof v.use === "boolean" ? v.use : null,
-    auto: v.auto && typeof v.auto === "object" ? { conf: clampNum(v.auto.conf, 0, 1), sure: v.auto.sure === true } : null,
+    auto: v.auto && typeof v.auto === "object" ? { conf: clampNum(v.auto.conf, 0, 1), sure: v.auto.sure === true, ...(v.auto.seed === true ? { seed: true } : {}) } : null,
     lm: Array.isArray(v.lm) ? pts(v.lm, 33) : null,
     tweak: v.tweak && typeof v.tweak === "object" ? { s: clampNum(v.tweak.s, -15, 15), r: clampNum(v.tweak.r, -10, 10), x: clampNum(v.tweak.x, -40, 40), y: clampNum(v.tweak.y, -40, 40) } : null,
     scheme: SCHEMES[v.scheme] ? v.scheme : "nipples",
+    ...(SIDE_SCHEMES[v.sideScheme] ? { sideScheme: v.sideScheme } : {}),
     stamp: typeof v.stamp === "string" && /^20\d\d:\d\d:\d\d \d\d:\d\d:\d\d$/.test(v.stamp) ? v.stamp : "",
   };
   if (Array.isArray(v.dims) && v.dims.length === 2 && v.dims.every((n) => typeof n === "number" && n > 0 && n < 20000)) out.dims = v.dims;
@@ -2811,7 +3162,7 @@ async function importProgress(file) {
     try { localStorage.setItem(k, JSON.stringify(c)); n++; } catch { /* spazio pieno */ }
   }
   // Riferimenti: quelli del file prendono il posto di quelli di questo browser
-  const refs = (Array.isArray(data.refs) ? data.refs : []).filter((r) => validKey(r?.key) && typeof r.image === "string" && /^data:image\/(jpeg|png|webp);base64,/.test(r.image)).slice(0, MAX_REFS);
+  const refs = (Array.isArray(data.refs) ? data.refs : []).filter((r) => validKey(r?.key) && typeof r.image === "string" && /^data:image\/(jpeg|png|webp);base64,/.test(r.image)).slice(0, MAX_REFS * POSE_KEYS_ALL.length);
   if (refs.length) {
     try {
       await idb("readwrite", (st) => st.clear());
@@ -2933,6 +3284,8 @@ function refresh() {
   $("#layout").classList.toggle("is-empty", !has);
   $("#emptyView").hidden = has;
   $("#editFrame").hidden = !has || state.view !== "prepare";
+  if ($("#editFrame").hidden) { $("#editBar").hidden = true; $("#coach").hidden = true; $("#pointPick").hidden = true; }
+  $("#howAlign").textContent = settings.detect === "auto" ? "I punti li trovo io, tu li controlli." : "Una foto a mano, le altre in automatico.";
   $("#compareFrame").hidden = !has || state.view !== "compare";
   $("#guideFrame").hidden = !has || state.view !== "guide";
   $("#prepareInspector").hidden = state.view !== "prepare";
