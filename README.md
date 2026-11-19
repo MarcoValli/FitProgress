@@ -6,8 +6,10 @@ Confronto delle foto dei progressi in palestra, tutto in una pagina HTML.
 
 - **Le foto non lasciano mai il dispositivo.** Si aprono e si analizzano nel browser; nessun server le riceve.
 - **Niente tracciamento:** niente account, cookie, statistiche, font o script di terzi.
-- **Connessioni bloccate dal browser.** La pagina ha una Content Security Policy che le permette di collegarsi solo al proprio sito. Qualunque altro invio (fetch, beacon, immagini, websocket) viene bloccato.
-- **I dati stanno nel browser:** punti, misure, diario e impostazioni in localStorage, foto di riferimento e del confronto in IndexedDB. Il file dei progressi contiene anche queste foto; se supera i 50 MB ti propone di toglierne qualcuna.
+- **Connessioni limitate dal browser.** La Content Security Policy permette di collegarsi solo al proprio sito e ai file esatti delle librerie sui CDN (il ripiego quando `vendor/` non si legge). Fetch, beacon, immagini e websocket verso altri indirizzi vengono bloccati. Non copre la navigazione verso un'altra pagina: la CSP non la può bloccare.
+- **Parte solo lo script della pagina.** Niente `'unsafe-inline'`: la CSP riconosce lo script dalla sua impronta SHA-256. Dopo ogni modifica allo script l'impronta va ricalcolata, se no la pagina non parte: a ogni push lo fa la GitHub Action `Impronta CSP`, che la rimette nel ramo con un commit. Per provare la pagina sul computer prima del push: `node tools/csp-hash.mjs` (con `--check` controlla soltanto).
+- **I dati stanno nel browser:** punti, misure, diario e impostazioni in localStorage, foto di riferimento e del confronto in IndexedDB. Il file dei progressi contiene anche queste foto; se supera i 50 MB ti propone di toglierne qualcuna. Il file non è cifrato: tienilo in un posto sicuro.
+- **Cancella tutto.** Impostazioni › I tuoi progressi › Cancella tutto da questo browser toglie punti, misure, diario, impostazioni e foto salvate.
 
 ## Cosa fa
 

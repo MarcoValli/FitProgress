@@ -2,9 +2,11 @@
 <html lang="it">
 <head>
 <meta charset="utf-8">
-<!-- Privacy: la pagina può collegarsi solo al proprio sito e, se aperta come file, ai due CDN delle librerie.
-     Niente cookie, niente statistiche, niente invii: il browser blocca qualunque altra connessione. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' blob: 'wasm-unsafe-eval'; connect-src 'self' blob: data: https://cdn.jsdelivr.net https://storage.googleapis.com; img-src 'self' blob: data:; style-src 'unsafe-inline'; worker-src 'self' blob:; manifest-src 'self'; base-uri 'none'; object-src 'none'; frame-src 'none'; form-action 'none'">
+<!-- Privacy: la pagina può collegarsi solo al proprio sito e, se aperta come file, ai file esatti delle librerie
+     sui due CDN (non al resto di quei siti, dove chiunque può pubblicare). Niente cookie, niente statistiche.
+     Script: parte solo quello di questa pagina, riconosciuto dalla sua impronta SHA-256 (più le librerie
+     controllate, come blob:). Dopo ogni modifica allo script: node tools/csp-hash.mjs, se no la pagina non parte. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-wQwRRHN2q0ulm51UKf1zUc5Z/9GKj5o1YoH3oTbHnPE=' blob: 'wasm-unsafe-eval'; connect-src 'self' blob: data: https://cdn.jsdelivr.net/npm/heic-to@1.6.7/dist/csp/heic-to.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/vision_bundle.mjs https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.wasm https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task; img-src 'self' blob: data:; style-src 'unsafe-inline'; worker-src 'self' blob:; manifest-src 'self'; base-uri 'none'; object-src 'none'; frame-src 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -336,6 +338,7 @@
   .kept-total { font-variant-numeric: tabular-nums; }
   .btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; font-weight: 600; }
   .btn.danger:hover:not(:disabled) { background: #f25555; }
+  .btn.ghost.danger-text { color: var(--danger); }
   #keptFoot { flex-wrap: wrap; }
 
   .note { color: var(--muted); font-size: 12px; line-height: 1.5; }
@@ -889,8 +892,49 @@
   </form>
 </dialog>
 
+<!-- Cancella tutto: si conferma, perché non si torna indietro. Il pulsante già attivo è Annulla -->
+<dialog class="dialog small" id="wipeDialog" aria-labelledby="wipeTitle">
+  <form method="dialog">
+    <header><h2 id="wipeTitle">Cancellare tutto da questo browser?</h2><p class="intro">Punti, misure, diario, impostazioni e foto salvate. Non si torna indietro.</p></header>
+    <div class="body">
+      <p class="note"><span id="wipeLast"></span> Se vuoi tenerli, prima salva i progressi in un file. Le foto nella galleria del telefono o nelle cartelle del computer restano dove sono: tolgo solo quello che l'app ha salvato qui.</p>
+      <p class="note">Se FitProgress è aperta anche in altre schede, chiudile prima.</p>
+    </div>
+    <footer>
+      <button class="btn" value="cancel">Annulla</button>
+      <button class="btn danger" value="wipe">Cancella tutto</button>
+    </footer>
+  </form>
+</dialog>
+
 <script>
 "use strict";
+
+// ------------------------------------------------------------------ cancella tutto
+//
+// Toglie da questo browser quello che l'app ha salvato: le chiavi "progressi…" di localStorage e il database
+// delle foto. Si fa due volte: subito, e di nuovo appena la pagina si ricarica, prima di leggere qualunque cosa.
+// Così sparisce anche un salvataggio partito nel frattempo (posa trovata, foto del confronto). Le aperture del
+// database che arrivano dopo aspettano che la cancellazione sia finita: le fa il browser, in ordine.
+const WIPE_FLAG = "progressi.wipe";
+function wipeStorage() {
+  const keys = [];
+  for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k?.startsWith("progressi")) keys.push(k); }
+  keys.forEach((k) => localStorage.removeItem(k));
+  return new Promise((resolve) => {
+    const req = indexedDB.deleteDatabase("progressi");
+    req.onsuccess = () => resolve(true);
+    req.onerror = () => resolve(false);
+  });
+}
+const wipedNow = (() => {
+  try {
+    if (sessionStorage.getItem(WIPE_FLAG) !== "1") return false;
+    sessionStorage.removeItem(WIPE_FLAG);
+  } catch { return false; }
+  wipeStorage();
+  return true;
+})();
 
 // ------------------------------------------------------------------ impostazioni e pose
 //
@@ -4303,7 +4347,11 @@ function openSettings(first = false) {
           <button type="button" class="btn" id="exportBtn"><svg class="icon"><use href="#i-download"/></svg>Salva i progressi</button>
           <button type="button" class="btn ghost" id="importBtn">Carica un file</button>
         </div>
-        <p class="note">${esc(lastExportText())}${MOBILE ? " Su iPhone salvalo in File › Sul mio iPhone: in iCloud Drive finirebbe online." : ""}</p>`)}
+        <p class="note">${esc(lastExportText())}${MOBILE ? " Su iPhone salvalo in File › Sul mio iPhone: in iCloud Drive finirebbe online." : ""}</p>
+        <p class="note">Su un dispositivo che usano anche altri, quando hai finito togli tutto da questo browser.</p>
+        <div class="data-actions">
+          <button type="button" class="btn ghost danger-text" id="wipeBtn"><svg class="icon"><use href="#i-x"/></svg>Cancella tutto da questo browser</button>
+        </div>`)}
       ${sec("privacy", "Privacy", "Tutto resta qui",
         `<p class="note">Le foto non lasciano mai questo dispositivo: si aprono e si analizzano qui. Niente account, cookie, statistiche o tracciamento. La pagina è bloccata dal browser e non può collegarsi ad altri siti${location.protocol === "file:" ? ", tranne i due da cui scarica le librerie" : ""}.</p>`)}`;
     dlg.querySelectorAll("[data-acc]").forEach((d) => d.addEventListener("toggle", () => { if (d.open) open.add(d.dataset.acc); else open.delete(d.dataset.acc); }));
@@ -4344,10 +4392,14 @@ function openSettings(first = false) {
     });
     // Un file caricato porta anche le sue impostazioni: la finestra si chiude senza applicare le scelte fatte qui
     $("#importBtn").addEventListener("click", () => pickImport(() => { dlg.returnValue = ""; dlg.onclose = null; dlg.close(); }));
+    // Cancella tutto: le impostazioni si chiudono senza salvare le scelte fatte qui
+    $("#wipeBtn").addEventListener("click", () => askWipe(() => { dlg.returnValue = ""; dlg.onclose = null; dlg.close(); }));
   };
   dlg.querySelector(".body").classList.add("accs");
   dlg.querySelector("h2").textContent = first ? "Prima di iniziare" : "Impostazioni";
-  dlg.querySelector(".intro").textContent = first
+  dlg.querySelector(".intro").textContent = first && wipedNow
+    ? "Ho cancellato tutti i dati da questo browser. Se vuoi ricominciare, scegli qui; se no puoi chiudere la pagina."
+    : first
     ? "Così misuro le cose giuste per te. Puoi cambiare tutto quando vuoi dalla rotella in alto."
     : "Valgono per tutte le foto. Le foto e i punti già messi restano.";
   $("#settingsCancel").hidden = first;
@@ -4641,6 +4693,28 @@ function lastExportText() {
   if (!t) return "Non hai ancora salvato i progressi in un file.";
   const days = Math.floor((Date.now() - t) / 864e5);
   return `Ultimo salvataggio: ${days === 0 ? "oggi" : days === 1 ? "ieri" : `${days} giorni fa`}.`;
+}
+
+// Cancella tutto (dalle impostazioni, dopo la conferma): via i dati, poi la pagina si ricarica e ripulisce
+// ancora (wipeStorage, in cima). Se un'altra scheda tiene il database aperto non si aspetta all'infinito:
+// ci pensa il secondo giro
+async function wipeAll() {
+  busyStart("Cancello i dati da questo browser…");
+  try { sessionStorage.setItem(WIPE_FLAG, "1"); } catch { /* senza il secondo giro */ }
+  await Promise.race([wipeStorage(), new Promise((r) => setTimeout(r, 3000))]);
+  location.reload();
+}
+function askWipe(then) {
+  const dlg = $("#wipeDialog");
+  $("#wipeLast").textContent = lastExportText();
+  dlg.returnValue = "";
+  dlg.onclose = () => {
+    dlg.onclose = null;
+    if (dlg.returnValue !== "wipe") return;
+    then?.();
+    wipeAll();
+  };
+  dlg.showModal();
 }
 
 // ------------------------------------------------------------------ diario: peso e misure col metro
