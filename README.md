@@ -7,7 +7,7 @@ Confronto delle foto dei progressi in palestra, tutto in una pagina HTML.
 - **Le foto non lasciano mai il dispositivo.** Si aprono e si analizzano nel browser; nessun server le riceve.
 - **Niente tracciamento:** niente account, cookie, statistiche, font o script di terzi.
 - **Connessioni bloccate dal browser.** La pagina ha una Content Security Policy che le permette di collegarsi solo al proprio sito. Qualunque altro invio (fetch, beacon, immagini, websocket) viene bloccato.
-- **I dati stanno nel browser:** punti, misure e impostazioni in localStorage, foto di riferimento in IndexedDB.
+- **I dati stanno nel browser:** punti, misure, diario e impostazioni in localStorage, foto di riferimento in IndexedDB.
 
 ## Cosa fa
 
@@ -15,6 +15,7 @@ Confronto delle foto dei progressi in palestra, tutto in una pagina HTML.
 - Confronta le foto con cursore, affiancate, sfumate o differenze.
 - Misura le larghezze scelte nelle impostazioni (spalle, vita, fianchi…) e la definizione muscolare, con un margine d'errore.
 - Propone una foto di riferimento e una guida per rifare le foto sempre uguali.
+- Nel diario segni peso, massa grassa e circonferenze col metro (collo, spalle, torace, braccio, vita, fianchi, coscia, polpaccio), anche senza foto. Vedi l'ultimo valore, quanto è cambiato e un grafico nel tempo. Il diario entra nel file dei progressi.
 - Funziona anche da telefono.
 
 
