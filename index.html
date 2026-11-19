@@ -2,6 +2,11 @@
 <html lang="it">
 <head>
 <meta charset="utf-8">
+<!-- Privacy: la pagina può collegarsi solo al proprio sito e, se aperta come file, ai due CDN delle librerie.
+     Niente cookie, niente statistiche, niente invii: il browser blocca qualunque altra connessione. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' blob: 'wasm-unsafe-eval'; connect-src 'self' blob: data: https://cdn.jsdelivr.net https://storage.googleapis.com; img-src 'self' blob: data:; style-src 'unsafe-inline'; worker-src 'self' blob:; manifest-src 'self'; base-uri 'none'; object-src 'none'; frame-src 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#151518">
 <meta name="mobile-web-app-capable" content="yes">
@@ -12,8 +17,10 @@
 <!--
   FitProgress: confronto delle foto dei progressi in palestra.
   Tutto resta nel browser: le foto non vengono caricate da nessuna parte.
-  Unica connessione: in Chrome/Firefox, alla prima foto HEIC si scarica il convertitore
-  (heic-to/libheif da jsDelivr, versione e impronta fisse). Safari non ne ha bisogno.
+  Le librerie (convertitore HEIC e riconoscimento della posa) stanno nella cartella vendor/,
+  accanto alla pagina: pubblicata, la pagina non contatta nessun altro sito. Aperta come file
+  dal computer, il browser non può leggere vendor/ e le scarica da jsDelivr e Google Storage.
+  In tutti e due i casi versione e impronta SHA-256 sono fisse.
   Punti, posa e regolazioni si salvano nel browser (localStorage), legati a nome e
   dimensione del file: riaprendo la pagina e trascinando le stesse foto si ritrovano.
 -->
@@ -649,28 +656,36 @@ function loadImage(file) {
   });
 }
 
-// Librerie scaricate al primo uso, a versione fissa e controllate con l'impronta SHA-256:
-// se il file sul CDN cambia, non parte. Le foto non vanno da nessuna parte.
+// Librerie caricate al primo uso, a versione fissa e controllate con l'impronta SHA-256: se il file
+// cambia, non parte. Prima dalla cartella vendor/ dello stesso sito; solo se la pagina è aperta come
+// file (o vendor/ manca) dal CDN. Le foto non vanno da nessuna parte.
 // HEIC: Safari le apre da solo, Chrome e Firefox usano libheif (heic-to).
 // Posa: MediaPipe Pose Landmarker (spalle, anche, mani) per allineare e scegliere le foto.
 const MP = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3";
+// [nome in vendor/, indirizzo di riserva sul CDN, impronta SHA-256, tipo]
 const LIBS = {
-  heic: ["https://cdn.jsdelivr.net/npm/heic-to@1.6.7/dist/heic-to.js", "iRqAh9dcPKCTQnpkPGd7EPx/nE+RgVg9y5ibyAXnX24=", "text/javascript"],
-  vision: [`${MP}/vision_bundle.mjs`, "+wwCwpb0TODMMkuha9ZG2Hc+tKeEfbQBnMTQQw23qbU=", "text/javascript"],
-  visionLoader: [`${MP}/wasm/vision_wasm_internal.js`, "KqX9P909ggjNdYffC7GftpJcTqFqdt0CWu3B9k1qYwk=", "text/javascript"],
-  visionWasm: [`${MP}/wasm/vision_wasm_internal.wasm`, "IlvAbA9Rqc8x/qDp4LAkPp4B+17zMswaf6Zlbb39qr8=", "application/wasm"],
-  poseModel: ["https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task", "UTSjqtJ6WLk9oAiNQx82baNitE48z740YrOCeoOQEbE=", "application/octet-stream"],
+  heic: ["heic-to.js", "https://cdn.jsdelivr.net/npm/heic-to@1.6.7/dist/csp/heic-to.js", "4KUVWFhywxnGAcM1UZJcnV/uMXRsrwMRKR7X5jZMWSw=", "text/javascript"],
+  vision: ["vision_bundle.mjs", `${MP}/vision_bundle.mjs`, "+wwCwpb0TODMMkuha9ZG2Hc+tKeEfbQBnMTQQw23qbU=", "text/javascript"],
+  visionLoader: ["vision_wasm_internal.js", `${MP}/wasm/vision_wasm_internal.js`, "KqX9P909ggjNdYffC7GftpJcTqFqdt0CWu3B9k1qYwk=", "text/javascript"],
+  visionWasm: ["vision_wasm_internal.wasm", `${MP}/wasm/vision_wasm_internal.wasm`, "IlvAbA9Rqc8x/qDp4LAkPp4B+17zMswaf6Zlbb39qr8=", "application/wasm"],
+  poseModel: ["pose_landmarker_full.task", "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task", "UTSjqtJ6WLk9oAiNQx82baNitE48z740YrOCeoOQEbE=", "application/octet-stream"],
 };
-async function fetchChecked(name) {
-  const [url, hash] = LIBS[name];
-  const res = await fetch(url, { credentials: "omit" });
+async function fetchVerified(url, hash) {
+  const res = await fetch(url, { credentials: "omit", referrerPolicy: "no-referrer" });
   if (!res.ok) throw new Error("rete");
   const data = await res.arrayBuffer();
   const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", data));
   if (btoa(String.fromCharCode(...digest)) !== hash) throw new Error("impronta");
   return data;
 }
-const blobUrl = async (name) => URL.createObjectURL(new Blob([await fetchChecked(name)], { type: LIBS[name][2] }));
+async function fetchChecked(name) {
+  const [local, cdn, hash] = LIBS[name];
+  if (location.protocol !== "file:") {
+    try { return await fetchVerified(new URL(`vendor/${local}`, location.href).href, hash); } catch { /* manca: si prova il CDN */ }
+  }
+  return fetchVerified(cdn, hash);
+}
+const blobUrl = async (name) => URL.createObjectURL(new Blob([await fetchChecked(name)], { type: LIBS[name][3] }));
 
 let heicLib = null;
 function loadHeicLib() {
@@ -854,7 +869,7 @@ async function addFiles(files) {
       failed.push(file.name);
     }
   }
-  if (heicOffline) toast("Per aprire le HEIC qui serve internet (si scarica il convertitore, le foto restano sul dispositivo). Oppure apri la pagina con Safari.");
+  if (heicOffline) toast(location.protocol === "file:" ? "Per aprire le HEIC da file serve internet (si scarica il convertitore, le foto restano sul dispositivo). Oppure apri la pagina con Safari." : "Non riesco a caricare il convertitore HEIC. Riprova, oppure apri la pagina con Safari.");
   else if (failed.length) toast(`Non riesco ad aprire ${failed.join(", ")}.`);
   else if (added) toast(added === 1 ? "1 foto aggiunta" : `${added} foto aggiunte`);
   if (added) navigator.storage?.persist?.().catch(() => {});
@@ -1352,7 +1367,7 @@ async function processQueue() {
     const unsure = pending.filter((p) => p.auto && !p.auto.sure).length;
     if (pending.length) toast(`${done === 1 ? "1 foto allineata" : `${done} foto allineate`} in automatico${unsure ? `: ${unsure} da controllare` : ""}${done < pending.length ? `, ${pending.length - done} da fare a mano` : ""}`);
   } catch {
-    toast("Il riconoscimento della posa non parte: la prima volta serve internet. Puoi allineare a mano.");
+    toast(location.protocol === "file:" ? "Il riconoscimento della posa non parte: da file serve internet la prima volta. Puoi allineare a mano." : "Il riconoscimento della posa non parte: riprova più tardi. Puoi allineare a mano.");
     state.photos.forEach((p) => { if (!p.lm) p.lm = []; });
   }
   queueBusy = false;
@@ -2634,7 +2649,10 @@ function openSettings(first = false) {
           <button type="button" class="btn" id="exportBtn"><svg class="icon"><use href="#i-download"/></svg>Salva i progressi</button>
           <button type="button" class="btn ghost" id="importBtn">Carica un file</button>
         </div>
-        <p class="note">${esc(lastExportText())}</p>
+        <p class="note">${esc(lastExportText())}${MOBILE ? " Su iPhone salvalo in File › Sul mio iPhone: in iCloud Drive finirebbe online." : ""}</p>
+      </fieldset>
+      <fieldset><legend>Privacy</legend>
+        <p class="note">Le foto non lasciano mai questo dispositivo: si aprono e si analizzano qui. Niente account, cookie, statistiche o tracciamento. La pagina è bloccata dal browser e non può collegarsi ad altri siti${location.protocol === "file:" ? ", tranne i due da cui scarica le librerie" : ""}.</p>
       </fieldset>`;
     dlg.querySelectorAll('input[name="who"]').forEach((i) => i.addEventListener("change", () => {
       draft.who = i.value;
