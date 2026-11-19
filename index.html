@@ -292,6 +292,30 @@
   .tips-body .save { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border-strong); color: var(--muted); font-size: 12.5px; }
   .data-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
+  /* ---------- diario: peso e misure col metro ---------- */
+  .log-view { height: calc(100vh - 56px); overflow-y: auto; padding: 24px 16px 40px; background: radial-gradient(circle at 50% 0%, #17171c, var(--bg) 70%); }
+  .log-wrap { max-width: 980px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+  .card { min-width: 0; padding: 18px; border-radius: 14px; background: var(--panel); border: 1px solid var(--border); display: grid; gap: 12px; }
+  .card-title { margin: 0; font-size: 15px; font-weight: 650; letter-spacing: -.01em; }
+  .card-sub { color: var(--faint); font-size: 12px; margin-top: 2px; }
+  #logHistory { grid-column: 1 / -1; }
+  .field > span small { color: var(--faint); font-size: 11px; }
+  .input[aria-invalid="true"] { border-color: var(--danger); }
+  .log-more summary { cursor: pointer; color: var(--muted); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+  .log-more summary small { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--faint); }
+  .log-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px; padding-top: 10px; }
+  .log-list { list-style: none; margin: 0 -8px; padding: 0; display: grid; gap: 2px; }
+  .log-list li { display: flex; align-items: center; gap: 6px; border-radius: 8px; }
+  .log-list li:hover { background: var(--raised); }
+  .log-list li[aria-current="true"] { background: var(--raised); box-shadow: inset 0 0 0 1px var(--border-strong); }
+  .log-entry { flex: 1; min-width: 0; display: grid; gap: 2px; padding: 8px; border: 0; border-radius: 8px; background: transparent; text-align: left; cursor: pointer; }
+  .log-entry .top { display: flex; align-items: center; gap: 8px; }
+  .log-entry .d { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .log-entry .vals { color: #dcdce2; font-variant-numeric: tabular-nums; }
+  .log-entry .why { color: var(--faint); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .log-list .btn { color: var(--faint); margin-right: 4px; }
+  .log-list .btn:hover:not(:disabled) { color: var(--danger); }
+
   .toast { position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px); opacity: 0; padding: 10px 16px; border-radius: 10px; background: #2a2a30; border: 1px solid var(--border-strong); box-shadow: 0 8px 30px rgba(0,0,0,.5); transition: opacity .2s, transform .2s; pointer-events: none; max-width: 90vw; }
   .toast.show { opacity: 1; transform: translate(-50%, 0); }
   /* ---------- telefono ---------- */
@@ -301,7 +325,7 @@
     body { min-height: 100dvh; }
     .topbar { position: sticky; top: 0; z-index: 5; height: auto; flex-wrap: wrap; gap: 8px; padding: max(8px, env(safe-area-inset-top)) 12px 8px; }
     .topbar nav { order: 3; display: flex; width: 100%; }
-    .topbar nav button { flex: 1; }
+    .topbar nav button { flex: 1; padding: 0 4px; white-space: nowrap; }
     .topbar .lbl { display: none; }
     #addBtn, #tipsBtn { width: 36px; padding: 0; }
     .brand { font-size: 14px; }
@@ -346,6 +370,11 @@
     .dialog footer { padding-bottom: max(14px, env(safe-area-inset-bottom)); }
     .checks { grid-template-columns: 1fr; gap: 6px; }
     .checks .pose { padding-top: 6px; }
+    .log-view { height: auto; overflow: visible; padding: 10px 10px calc(24px + env(safe-area-inset-bottom)); }
+    .log-wrap { grid-template-columns: 1fr; gap: 10px; }
+    .card { padding: 14px; scroll-margin-top: 110px; }
+    .log-grid { grid-template-columns: 1fr 1fr; }
+    .log-list .btn { width: 40px; height: 40px; }
 
   }
 
@@ -374,6 +403,7 @@
     <button role="tab" id="tabPrepare" aria-selected="true">Prepara</button>
     <button role="tab" id="tabCompare" aria-selected="false" disabled>Confronta</button>
     <button role="tab" id="tabGuide" aria-selected="false" disabled>Guida foto</button>
+    <button role="tab" id="tabLog" aria-selected="false" title="Peso e misure col metro">Diario</button>
   </nav>
   <div class="spacer"></div>
   <button class="btn ghost" id="tipsBtn" title="Come fare le foto"><svg class="icon"><use href="#i-camera"/></svg><span class="lbl">Come fare le foto</span></button>
@@ -393,7 +423,7 @@
         <h2>Trascina qui le foto</h2>
         <p>JPG, PNG, HEIC e screenshot: le bande bianche si tolgono da sole. Le foto restano sul tuo dispositivo.</p>
         <button class="btn primary" id="addBtn2"><svg class="icon"><use href="#i-plus"/></svg>Scegli le foto</button>
-        <p class="empty-links"><button type="button" class="link" id="importLink">Ho già un file dei progressi</button> · <button type="button" class="link" id="tipsLink">Come fare le foto</button></p>
+        <p class="empty-links"><button type="button" class="link" id="importLink">Ho già un file dei progressi</button> · <button type="button" class="link" id="tipsLink">Come fare le foto</button> · <button type="button" class="link" id="logLink">Segna peso e misure</button></p>
       </div>
       <div class="how">
         <div><b>1 · Aggiungi le foto</b><span>Di fronte, di lato o di schiena: le riconosco io. La data dal nome del file o dalla foto.</span></div>
@@ -511,6 +541,33 @@
       <div class="section results" id="results"></div>
     </div>
   </aside>
+</main>
+
+<!-- Diario: peso e misure col metro, anche senza foto -->
+<main class="log-view" id="logView" hidden>
+  <div class="log-wrap">
+    <form class="card" id="logForm" aria-labelledby="logFormTitle" novalidate>
+      <div>
+        <h2 class="card-title" id="logFormTitle">Nuova misurazione</h2>
+        <div class="card-sub" id="logFormSub">Tutto facoltativo, tranne la data e almeno una misura.</div>
+      </div>
+      <label class="field"><span>Data</span><input class="input" type="date" id="logDate" required></label>
+      <div class="row2" id="logMain"></div>
+      <details class="log-more" id="logMore">
+        <summary>Circonferenze <small>in cm</small></summary>
+        <div class="log-grid" id="logCirc"></div>
+      </details>
+      <label class="field"><span>Nota</span><input class="input" type="text" id="logNote" maxlength="200" autocomplete="off" placeholder="Es. settimana di vacanza"></label>
+      <p class="warn" id="logError" role="alert" hidden></p>
+      <div class="actions">
+        <button class="btn primary" type="submit" id="logSave">Salva</button>
+        <button class="btn ghost" type="button" id="logDelete" hidden>Elimina</button>
+      </div>
+      <p class="note">Pesati al mattino, dopo il bagno e prima di colazione. Col metro: aderente senza stringere, sempre negli stessi punti (vita all'ombelico, braccio e coscia nel punto più largo).</p>
+    </form>
+    <section class="card" id="logSummary" aria-label="Andamento"></section>
+    <section class="card" id="logHistory" aria-label="Storico"></section>
+  </div>
 </main>
 <div class="toast" id="toast" role="status"></div>
 
@@ -700,7 +757,7 @@ const MOBILE = matchMedia("(pointer: coarse)").matches && Math.min(screen.width,
 const MAX_SIDE = MOBILE ? 1280 : 1600;
 
 // picked: pose per cui in questa sessione hai già scelto i punti; picking: posa di cui stai cambiando i punti
-const state = { photos: [], selected: null, mode: "align", view: "prepare", cmode: "wipe", wipe: 50, fade: 50, comparePose: "front", thirds: {}, refKeys: new Set(), guidePose: "front", picked: new Set(), picking: null };
+const state = { photos: [], selected: null, mode: "align", view: "prepare", cmode: "wipe", wipe: 50, fade: 50, comparePose: "front", thirds: {}, refKeys: new Set(), guidePose: "front", picked: new Set(), picking: null, logMetric: "weight" };
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fmtDate = (d) => d ? d.split("-").reverse().join("/") : "";
@@ -957,6 +1014,8 @@ async function addFiles(files) {
   else if (failed.length) toast(`Non riesco ad aprire ${failed.join(", ")}.`);
   else if (added) toast(added === 1 ? "1 foto aggiunta" : `${added} foto aggiunte`);
   if (added) navigator.storage?.persist?.().catch(() => {});
+  // Foto aggiunte dal diario: si passa a prepararle
+  if (added && state.view === "log") state.view = "prepare";
   if (added) state.goCompare = true; // in automatico, finito il lavoro si apre il confronto
   refresh();
   processQueue();
@@ -2664,26 +2723,27 @@ function renderResults(an) {
   box.innerHTML = html;
 }
 
-function chart(rows, title) {
-  const W = 280, H = 150, L = 34, R = 10, T = 26, B = 26;
+// gid: id del gradiente, diverso per ogni grafico nella pagina. minPad: margine minimo sopra e sotto, nell'unità dei valori
+function chart(rows, title, { W = 280, H = 150, digits = 2, minPad = 0.04, gid = "g" } = {}) {
+  const L = 34, R = 10, T = 26, B = 26;
   const useDates = rows.every((r) => r.p.date);
   const xs = rows.map((r, i) => useDates ? new Date(r.p.date).getTime() : i);
   const ys = rows.map((r) => r.v);
   const [x0, x1] = [Math.min(...xs), Math.max(...xs)];
-  const pad = Math.max(0.04, (Math.max(...ys) - Math.min(...ys)) * 0.25);
+  const pad = Math.max(minPad, (Math.max(...ys) - Math.min(...ys)) * 0.25);
   const [y0, y1] = [Math.min(...ys) - pad, Math.max(...ys) + pad];
   const X = (x) => L + (x1 === x0 ? 0.5 : (x - x0) / (x1 - x0)) * (W - L - R);
   const Y = (y) => T + (1 - (y - y0) / (y1 - y0)) * (H - T - B);
   const line = rows.map((r, i) => `${X(xs[i]).toFixed(1)},${Y(ys[i]).toFixed(1)}`).join(" ");
   const area = `${X(xs[0]).toFixed(1)},${H - B} ${line} ${X(xs[xs.length - 1]).toFixed(1)},${H - B}`;
   const grid = [y0 + pad, (y0 + y1) / 2, y1 - pad].map((v) =>
-    `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" stroke="#2a2a30"/><text x="${L - 6}" y="${Y(v) + 4}" fill="#6c6c76" font-size="10" text-anchor="end">${num(v, 2)}</text>`).join("");
-  const dots = rows.map((r, i) => `<circle cx="${X(xs[i])}" cy="${Y(ys[i])}" r="3.5" fill="#0e0e10" stroke="#4f8cff" stroke-width="2"><title>${esc(labelOf(r.p))}: ${num(ys[i], 2)}</title></circle>`).join("");
+    `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" stroke="#2a2a30"/><text x="${L - 6}" y="${Y(v) + 4}" fill="#6c6c76" font-size="10" text-anchor="end">${num(v, digits)}</text>`).join("");
+  const dots = rows.map((r, i) => `<circle cx="${X(xs[i])}" cy="${Y(ys[i])}" r="3.5" fill="#0e0e10" stroke="#4f8cff" stroke-width="2"><title>${esc(labelOf(r.p))}: ${num(ys[i], digits)}</title></circle>`).join("");
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(title)} nel tempo">
-    <defs><linearGradient id="g" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#4f8cff" stop-opacity=".35"/><stop offset="1" stop-color="#4f8cff" stop-opacity="0"/></linearGradient></defs>
+    <defs><linearGradient id="${gid}" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#4f8cff" stop-opacity=".35"/><stop offset="1" stop-color="#4f8cff" stop-opacity="0"/></linearGradient></defs>
     <text x="0" y="12" fill="#9b9ba5" font-size="11">${esc(title)} nel tempo</text>
     ${grid}
-    <polygon points="${area}" fill="url(#g)"/>
+    <polygon points="${area}" fill="url(#${gid})"/>
     <polyline points="${line}" fill="none" stroke="#4f8cff" stroke-width="2" stroke-linejoin="round"/>${dots}
     <text x="${L}" y="${H - 8}" fill="#6c6c76" font-size="10">${esc(labelOf(rows[0].p))}</text>
     <text x="${W - R}" y="${H - 8}" fill="#6c6c76" font-size="10" text-anchor="end">${esc(labelOf(rows[rows.length - 1].p))}</text>
@@ -3286,7 +3346,7 @@ function openSettings(first = false) {
       <fieldset><legend>Cosa misurare <button type="button" class="link" id="presetBtn">Ripristina quelle consigliate</button></legend><div class="checks">${chips}</div>${draft.framing !== "full" ? '<p class="note">Coscia e polpaccio si misurano solo con la figura intera (in “Come fai le foto”).</p>' : ""}</fieldset>
       <fieldset><legend>Definizione</legend><label class="switch"><span>Stima la definizione muscolare<small>Ombre fra i muscoli di petto, addome e schiena. Spegnila se fai le foto con la maglietta.</small></span><input type="checkbox" id="defInput" ${draft.definition ? "checked" : ""}></label></fieldset>
       <fieldset><legend>I tuoi progressi</legend>
-        <p class="note">Punti, misure e impostazioni stanno solo in questo browser. Salvali in un file per non perderli o per passarli su un altro dispositivo. Le foto non ci sono: quando apri il file, aggiungi di nuovo le foto e i punti tornano.${MOBILE ? " Su iPhone Safari cancella i dati dei siti che non apri da una settimana: aggiungi la pagina alla schermata Home o salva spesso." : ""}</p>
+        <p class="note">Punti, misure, diario e impostazioni stanno solo in questo browser. Salvali in un file per non perderli o per passarli su un altro dispositivo. Le foto non ci sono: quando apri il file, aggiungi di nuovo le foto e i punti tornano.${MOBILE ? " Su iPhone Safari cancella i dati dei siti che non apri da una settimana: aggiungi la pagina alla schermata Home o salva spesso." : ""}</p>
         <label class="switch"><span>Includi le foto di riferimento<small>Il file pesa di più e contiene quelle foto.</small></span><input type="checkbox" id="withRefs" checked></label>
         <div class="data-actions">
           <button type="button" class="btn" id="exportBtn"><svg class="icon"><use href="#i-download"/></svg>Salva i progressi</button>
@@ -3364,7 +3424,8 @@ $("#settingsCancel").addEventListener("click", () => $("#settingsDialog").close(
 
 // ------------------------------------------------------------------ salva e carica i progressi (file JSON)
 //
-// Nel file: impostazioni, punti, misure e ritocchi di ogni foto e, se vuoi, le foto di riferimento.
+// Nel file: impostazioni, punti, misure e ritocchi di ogni foto, il diario (peso e misure col metro) e,
+// se vuoi, le foto di riferimento.
 // Le altre foto non ci sono: riaprendo il file si trascinano di nuovo e i punti tornano
 // (si ritrovano per nome e peso del file, o per data e ora di scatto).
 
@@ -3394,7 +3455,7 @@ async function exportProgress(withRefs) {
       refs = await Promise.all(all.map(async (r) => ({ key: r.key, name: r.name, date: r.date || "", stamp: r.stamp || "", image: await blobToDataURL(r.blob) })));
     } catch { /* niente riferimenti */ }
   }
-  const data = { app: "fitprogress", version: 1, exportedAt: new Date().toISOString(), settings, photos, refs };
+  const data = { app: "fitprogress", version: 1, exportedAt: new Date().toISOString(), settings, photos, refs, diary };
   const file = new File([JSON.stringify(data)], `fitprogress-${todayISO()}.json`, { type: "application/json" });
   const n = Object.keys(photos).length;
   // Sul telefono si apre il foglio di condivisione (Salva su File, AirDrop…); sul computer si scarica
@@ -3408,7 +3469,17 @@ async function exportProgress(withRefs) {
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   }
   try { localStorage.setItem(LAST_EXPORT_KEY, String(Date.now())); } catch { /* spazio pieno */ }
-  toast(`Salvati i progressi di ${n === 1 ? "1 foto" : `${n} foto`}${refs.length ? ` e ${refs.length === 1 ? "1 riferimento" : `${refs.length} riferimenti`}` : ""}`);
+  toast(`Salvati i progressi di ${savedWhat(n, diary.length, refs.length)}`);
+}
+// "3 foto, 12 misurazioni e 1 riferimento": le foto si dicono sempre, tranne se c'è solo il diario
+const countOf = (n, one, many) => n === 1 ? `1 ${one}` : `${n} ${many}`;
+function savedWhat(photos, entries, refs) {
+  const xs = [
+    (photos || !entries) && countOf(photos, "foto", "foto"),
+    entries && countOf(entries, "misurazione", "misurazioni"),
+    refs && countOf(refs, "riferimento", "riferimenti"),
+  ].filter(Boolean);
+  return xs.length > 1 ? `${xs.slice(0, -1).join(", ")} e ${xs[xs.length - 1]}` : xs[0];
 }
 
 // Tutto quello che arriva dal file si controlla: solo valori del tipo e nei limiti attesi
@@ -3465,6 +3536,13 @@ async function importProgress(file) {
     if (!c || !validKey(k)) continue;
     try { localStorage.setItem(k, JSON.stringify(c)); n++; } catch { /* spazio pieno */ }
   }
+  // Diario: le misurazioni del file si aggiungono a quelle di questo browser; stessa data, vince il file
+  const fileDiary = cleanDiary(data.diary);
+  if (fileDiary.length) {
+    const before = diary;
+    diary = cleanDiary([...diary, ...fileDiary]);
+    if (!saveDiary()) diary = before;
+  }
   // Riferimenti: quelli del file prendono il posto di quelli di questo browser
   const refs = (Array.isArray(data.refs) ? data.refs : []).filter((r) => validKey(r?.key) && typeof r.image === "string" && /^data:image\/(jpeg|png|webp);base64,/.test(r.image)).slice(0, MAX_REFS * POSE_KEYS_ALL.length);
   if (refs.length) {
@@ -3489,9 +3567,10 @@ async function importProgress(file) {
   mapCache.clear();
   statsCache.clear();
   await loadRefs();
+  resetLogForm();
   refresh();
   processQueue();
-  toast(`Caricati i progressi di ${n === 1 ? "1 foto" : `${n} foto`}${refs.length ? ` e ${refs.length === 1 ? "1 riferimento" : `${refs.length} riferimenti`}` : ""}.${state.photos.length ? "" : " Ora trascina le foto: i punti tornano da soli."}`);
+  toast(`Caricati i progressi di ${savedWhat(n, fileDiary.length, refs.length)}.${n && !state.photos.length ? " Ora trascina le foto: i punti tornano da soli." : ""}`);
   return true;
 }
 
@@ -3513,6 +3592,227 @@ function lastExportText() {
   const days = Math.floor((Date.now() - t) / 864e5);
   return `Ultimo salvataggio: ${days === 0 ? "oggi" : days === 1 ? "ieri" : `${days} giorni fa`}.`;
 }
+
+// ------------------------------------------------------------------ diario: peso e misure col metro
+//
+// Una misurazione per giorno, anche senza foto. Sta in localStorage (una sola chiave, fuori da "progressi:"
+// che è per le foto) ed entra nel file dei progressi. Il modulo resta nella pagina: i ridisegni dovuti
+// alle foto che si allineano intanto non cancellano quello che stai scrivendo.
+
+const DIARY_KEY = "progressi.diary";
+const DIARY_MAX = 5000;
+// Dall'alto in basso; main: in vista, le altre fra le circonferenze
+const DIARY_FIELDS = {
+  weight: { name: "Peso", short: "", unit: "kg", min: 20, max: 400, main: true },
+  fat: { name: "Massa grassa", short: "grasso", unit: "%", min: 2, max: 75, main: true },
+  neck: { name: "Collo", unit: "cm", min: 10, max: 300 },
+  shoulders: { name: "Spalle", unit: "cm", min: 10, max: 300 },
+  chest: { name: "Torace", unit: "cm", min: 10, max: 300 },
+  arm: { name: "Braccio", unit: "cm", min: 10, max: 300 },
+  waist: { name: "Vita", unit: "cm", min: 10, max: 300 },
+  hips: { name: "Fianchi", unit: "cm", min: 10, max: 300 },
+  thigh: { name: "Coscia", unit: "cm", min: 10, max: 300 },
+  calf: { name: "Polpaccio", unit: "cm", min: 10, max: 300 },
+};
+const DIARY_IDS = Object.keys(DIARY_FIELDS);
+// 78 kg, 78,4 kg, 18,5%
+const fmtVal = (v) => num(v, 1).replace(/,0$/, "");
+const withUnit = (v, f) => f.unit === "%" ? `${fmtVal(v)}%` : `${fmtVal(v)} ${f.unit}`;
+
+// Anche il diario salvato si ricontrolla: è lo stesso codice che pulisce i file caricati
+function cleanDiary(v) {
+  if (!Array.isArray(v)) return [];
+  const byDate = new Map();
+  for (const e of v.slice(0, DIARY_MAX * 4)) {
+    if (!e || typeof e !== "object" || !validDate(e.date)) continue;
+    const out = { date: e.date };
+    for (const id of DIARY_IDS) {
+      const f = DIARY_FIELDS[id], n = e[id];
+      if (typeof n === "number" && Number.isFinite(n) && n >= f.min && n <= f.max) out[id] = Math.round(n * 10) / 10;
+    }
+    if (typeof e.note === "string" && e.note.trim()) out.note = e.note.trim().slice(0, 200);
+    if (DIARY_IDS.some((id) => out[id] != null)) byDate.set(e.date, out);
+  }
+  return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)).slice(-DIARY_MAX);
+}
+function loadDiary() {
+  try { return cleanDiary(JSON.parse(localStorage.getItem(DIARY_KEY))); } catch { return []; }
+}
+function saveDiary() {
+  try {
+    localStorage.setItem(DIARY_KEY, JSON.stringify(diary));
+    return true;
+  } catch {
+    toast("Non riesco a salvare: lo spazio del browser è pieno");
+    return false;
+  }
+}
+let diary = loadDiary();
+let logEditing = null; // data della misurazione che stai modificando, o null se è nuova
+
+// Il modulo si costruisce una volta sola
+{
+  const input = (id) => {
+    const f = DIARY_FIELDS[id];
+    return `<label class="field"><span>${esc(f.name)} <small>${esc(f.unit)}</small></span><input class="input" type="text" inputmode="decimal" autocomplete="off" id="log-${id}" data-field="${id}"></label>`;
+  };
+  $("#logMain").innerHTML = DIARY_IDS.filter((id) => DIARY_FIELDS[id].main).map(input).join("");
+  $("#logCirc").innerHTML = DIARY_IDS.filter((id) => !DIARY_FIELDS[id].main).map(input).join("");
+}
+const logInput = (id) => $(`#log-${id}`);
+
+function showLogError(msg, bad = []) {
+  const box = $("#logError");
+  box.hidden = !msg;
+  box.textContent = msg || "";
+  DIARY_IDS.forEach((id) => logInput(id).toggleAttribute("aria-invalid", bad.includes(id)));
+  if (bad.length) {
+    if (!DIARY_FIELDS[bad[0]].main) $("#logMore").open = true;
+    logInput(bad[0]).focus();
+  }
+}
+const logEls = () => [...DIARY_IDS.map((id) => [id, logInput(id)]), ["note", $("#logNote")]];
+// Mette nel modulo i valori della misurazione e (null: vuoti). Quello che hai scritto tu resta: si cambiano
+// solo i campi uguali a com'erano stati caricati (data-loaded). clear: svuota tutto
+function fillLogForm(e, clear = false) {
+  for (const [id, el] of logEls()) {
+    if (!clear && el.value !== (el.dataset.loaded ?? "")) continue;
+    el.value = e?.[id] == null ? "" : id === "note" ? e.note : fmtVal(e[id]);
+    el.dataset.loaded = el.value;
+  }
+  if (DIARY_IDS.some((id) => !DIARY_FIELDS[id].main && logInput(id).value)) $("#logMore").open = true;
+}
+function updateLogHead() {
+  $("#logFormTitle").textContent = logEditing ? `Misurazione del ${fmtDate(logEditing)}` : "Nuova misurazione";
+  $("#logFormSub").textContent = logEditing ? "Cambia i valori e aggiorna, o scegli un'altra data." : "Tutto facoltativo, tranne la data e almeno una misura.";
+  $("#logSave").textContent = logEditing ? "Aggiorna" : "Salva";
+  $("#logDelete").hidden = !logEditing;
+}
+// Il modulo mostra la misurazione della data scelta, se c'è già. Scrivendo la data a mano il browser la
+// cambia a ogni cifra: anche passando per altre date, quello che hai scritto non si perde
+function onLogDate() {
+  const d = $("#logDate").value, e = diary.find((x) => x.date === d) || null;
+  fillLogForm(e);
+  logEditing = e ? d : null;
+  showLogError("");
+  updateLogHead();
+  if ($("#logView").hidden === false) renderLogHistory();
+}
+function resetLogForm(date = todayISO()) {
+  logEditing = null;
+  fillLogForm(null, true);
+  $("#logMore").open = false;
+  $("#logDate").value = date;
+  onLogDate();
+}
+function readLogForm() {
+  const entry = { date: $("#logDate").value }, bad = [];
+  for (const id of DIARY_IDS) {
+    const f = DIARY_FIELDS[id], raw = logInput(id).value.trim().replace(",", ".");
+    if (!raw) continue;
+    const n = /^\d{1,3}(\.\d{1,2})?$/.test(raw) ? +raw : NaN;
+    if (n >= f.min && n <= f.max) entry[id] = Math.round(n * 10) / 10;
+    else bad.push(id);
+  }
+  const note = $("#logNote").value.trim().slice(0, 200);
+  if (note) entry.note = note;
+  return { entry, bad };
+}
+
+$("#logDate").addEventListener("change", onLogDate);
+$("#logForm").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  const { entry, bad } = readLogForm();
+  if (!validDate(entry.date)) { showLogError("Scegli la data."); $("#logDate").focus(); return; }
+  if (bad.length) {
+    showLogError(`Controlla ${bad.map((id) => { const f = DIARY_FIELDS[id]; return `${f.name.toLowerCase()} (fra ${f.min} e ${f.max} ${f.unit})`; }).join(", ")}.`, bad);
+    return;
+  }
+  if (!DIARY_IDS.some((id) => entry[id] != null)) { showLogError("Scrivi almeno una misura."); logInput("weight").focus(); return; }
+  const existed = diary.some((x) => x.date === entry.date), before = diary;
+  diary = cleanDiary([...diary.filter((x) => x.date !== entry.date), entry]);
+  if (!saveDiary()) { diary = before; return; }
+  navigator.storage?.persist?.().catch(() => {});
+  toast(`${existed ? "Aggiornata" : "Salvata"} la misurazione del ${fmtDate(entry.date)}`);
+  resetLogForm();
+  renderLog();
+});
+function deleteLogEntry(date) {
+  if (!confirm(`Elimino la misurazione del ${fmtDate(date)}?`)) return;
+  const before = diary;
+  diary = diary.filter((x) => x.date !== date);
+  if (!saveDiary()) { diary = before; return; }
+  toast(`Eliminata la misurazione del ${fmtDate(date)}`);
+  if (logEditing === date) resetLogForm();
+  renderLog();
+}
+$("#logDelete").addEventListener("click", () => logEditing && deleteLogEntry(logEditing));
+
+// Per ogni misura: l'ultimo valore e quanto è cambiato dalla prima volta. Il grafico ne mostra una
+function renderLogSummary() {
+  const box = $("#logSummary");
+  if (!diary.length) {
+    box.innerHTML = `<h2 class="card-title">Andamento</h2>
+      <p class="note">Ancora nessuna misurazione. Pesati e misurati ogni 1 o 2 settimane, alle stesse condizioni delle foto: qui vedi come cambiano.</p>`;
+    return;
+  }
+  const rows = DIARY_IDS.map((id) => ({ id, f: DIARY_FIELDS[id], s: diary.filter((e) => e[id] != null) })).filter((r) => r.s.length);
+  const metrics = rows.map(({ id, f, s }) => {
+    const first = s[0], last = s[s.length - 1];
+    const change = s.length >= 2 ? ` · ${signed(last[id] - first[id])}${f.unit === "%" ? " punti" : ` ${f.unit}`} dal ${fmtDate(first.date)}` : "";
+    return `<div class="metric"><div><div class="name">${esc(f.name)}</div><div class="sub">${esc(`ultima il ${fmtDate(last.date)}${change}`)}</div></div>
+      <div class="right"><span class="val">${esc(withUnit(last[id], f))}</span></div></div>`;
+  }).join("");
+  const charted = rows.filter((r) => r.s.length >= 2);
+  if (!charted.some((r) => r.id === state.logMetric)) state.logMetric = charted[0]?.id || "weight";
+  const cur = charted.find((r) => r.id === state.logMetric);
+  const pick = charted.length > 1 ? `<label class="field"><span>Nel grafico</span><select class="input" id="logMetric">${charted.map((r) =>
+    `<option value="${r.id}" ${r === cur ? "selected" : ""}>${esc(r.f.name)}</option>`).join("")}</select></label>` : "";
+  const graph = cur
+    ? chart(cur.s.map((e) => ({ p: { date: e.date }, v: e[cur.id] })), `${cur.f.name} (${cur.f.unit})`, { W: 320, H: 170, digits: 1, minPad: 0.5, gid: "gLog" })
+    : `<p class="note">Con due misurazioni compare il grafico.</p>`;
+  box.innerHTML = `<h2 class="card-title">Andamento</h2><div class="metrics">${metrics}</div>${pick}${graph}`;
+  $("#logMetric")?.addEventListener("change", (e) => { state.logMetric = e.target.value; renderLogSummary(); });
+}
+
+function renderLogHistory() {
+  const box = $("#logHistory");
+  const backup = `<p class="note">Il diario sta solo in questo browser. <button type="button" class="link" id="logBackup">Salvalo in un file</button> insieme ai progressi delle foto.</p>`;
+  if (!diary.length) { box.hidden = true; return; }
+  box.hidden = false;
+  const items = [...diary].reverse().map((e, i, all) => {
+    const vals = DIARY_IDS.filter((id) => e[id] != null).map((id) => {
+      const f = DIARY_FIELDS[id], short = f.short ?? f.name.toLowerCase();
+      return `${short ? `${short} ` : ""}${withUnit(e[id], f)}`;
+    }).join(" · ");
+    // Peso rispetto alla misurazione precedente che ce l'ha
+    const prev = e.weight != null && all.slice(i + 1).find((x) => x.weight != null);
+    const delta = prev ? `<span class="pill">${esc(`${signed(e.weight - prev.weight)} kg`)}</span>` : "";
+    return `<li ${e.date === logEditing ? 'aria-current="true"' : ""}>
+      <button type="button" class="log-entry" data-edit="${e.date}" aria-label="Modifica la misurazione del ${fmtDate(e.date)}">
+        <span class="top"><span class="d">${fmtDate(e.date)}</span>${delta}</span>
+        <span class="vals">${esc(vals)}</span>${e.note ? `<span class="why">${esc(e.note)}</span>` : ""}
+      </button>
+      <button type="button" class="btn ghost icon-only" data-del="${e.date}" aria-label="Elimina la misurazione del ${fmtDate(e.date)}" title="Elimina"><svg class="icon"><use href="#i-x"/></svg></button>
+    </li>`;
+  }).join("");
+  box.innerHTML = `<div><h2 class="card-title">Storico</h2><div class="card-sub">${countOf(diary.length, "misurazione", "misurazioni")}. Tocca una riga per modificarla.</div></div>
+    <ul class="log-list">${items}</ul>${backup}`;
+  box.querySelectorAll("[data-edit]").forEach((b) => b.addEventListener("click", () => {
+    resetLogForm(b.dataset.edit);
+    $("#logForm").scrollIntoView({ behavior: "smooth", block: "start" });
+    if (!MOBILE) logInput("weight").focus({ preventScroll: true });
+  }));
+  box.querySelectorAll("[data-del]").forEach((b) => b.addEventListener("click", () => deleteLogEntry(b.dataset.del)));
+  $("#logBackup").addEventListener("click", () => openSettings(false));
+}
+
+function renderLog() {
+  renderLogSummary();
+  renderLogHistory();
+  updateLogHead();
+}
+resetLogForm();
 
 // ------------------------------------------------------------------ come fare le foto
 
@@ -3584,6 +3884,11 @@ function refresh() {
   const canCompare = POSE_KEYS.some((k) => readyFor(k).length >= 2);
   if (!canCompare && state.view === "compare") state.view = "prepare";
   if (state.selected && state.mode === "measure" && !state.selected.M) state.mode = "align";
+  // Il diario funziona anche senza foto: prende il posto di tutta la pagina delle foto
+  const log = state.view === "log";
+  $("#layout").hidden = log;
+  $("#logView").hidden = !log;
+  $("#tabLog").setAttribute("aria-selected", log);
 
   $("#layout").classList.toggle("is-empty", !has);
   $("#emptyView").hidden = has;
@@ -3604,6 +3909,7 @@ function refresh() {
   loupe.hidden = true;
 
   renderSidebar();
+  if (log) { renderLog(); return; }
   if (!has) return;
   if (state.view === "prepare") {
     updatePrepare();
@@ -3624,6 +3930,7 @@ function refresh() {
 $("#tabPrepare").addEventListener("click", () => { state.view = "prepare"; refresh(); });
 $("#tabCompare").addEventListener("click", () => { state.view = "compare"; refresh(); });
 $("#tabGuide").addEventListener("click", () => { state.view = "guide"; refresh(); });
+for (const id of ["#tabLog", "#logLink"]) $(id).addEventListener("click", () => { state.view = "log"; refresh(); });
 for (const id of ["#addBtn", "#addBtn2"]) $(id).addEventListener("click", () => $("#fileInput").click());
 $("#fileInput").addEventListener("change", (e) => { addFiles([...e.target.files]); e.target.value = ""; });
 
