@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS photos (
 );
 CREATE INDEX IF NOT EXISTS photos_user ON photos (user_id);
 
--- Voci del diario scritte al bot e non ancora prese dalla pagina
+-- Voci del diario scritte al bot e non ancora prese dalla pagina (restano finché non salvi; field anche "note")
 CREATE TABLE IF NOT EXISTS diary (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
@@ -70,13 +70,14 @@ CREATE TABLE IF NOT EXISTS diary (
 );
 CREATE INDEX IF NOT EXISTS diary_user ON diary (user_id);
 
--- Messaggi che il bot non ha capito: aspettano la risposta coi pulsanti (allenamento, pasto, lascia stare)
+-- Messaggi che il bot non ha capito: sono già nel diario come nota, aspettano la risposta coi pulsanti
 CREATE TABLE IF NOT EXISTS asks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
   date TEXT NOT NULL,
   text TEXT NOT NULL,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  diary_id INTEGER          -- la nota già segnata nel diario (i pulsanti la spostano o la tolgono)
 );
 
 -- Indirizzo della pagina (lo scrive /setup): serve ai promemoria, che non arrivano da una richiesta

@@ -11,7 +11,7 @@
 // Si entra su invito: chi non è in ALLOWED_IDS scrive al bot il codice d'accesso (ACCESS_CODE), una volta.
 // Cosa resta qui (D1): chi è stato ammesso, impostazioni del promemoria, l'identificativo dell'ultimo file dei
 // progressi nella chat (cifrato: lo apre solo la pagina), i salvataggi mandati in chat (per toglierli dopo 4 ore se
-// non li conservi), le sessioni (solo impronte), e per 7 giorni le foto e le voci del diario arrivate in chat e non
+// non li conservi), le sessioni (solo impronte), per 7 giorni le foto, e finché non salvi le voci del diario (anche le note) arrivate in chat e non
 // ancora prese dalla pagina (testi cifrati). Le foto e i file stanno su Telegram.
 import { parseMessage, describeItem, NUM_FIELDS, TEXT_FIELDS } from "./parse.js";
 import { checkInitData, safeEqual } from "./auth.js";
@@ -209,6 +209,8 @@ const HELP = (u) => [
   "",
   `⏰ Ogni ${u.every_days} giorni alle ${u.hour} ti ricordo le foto${u.paused ? " (ora in pausa)" : ""}. Per cambiarlo: /promemoria`,
   "",
+  "Tengo tutto da parte e lo metto nel diario del file quando salvi. /diario mostra cosa ho tenuto.",
+  "",
   "/start rivede questo messaggio · /esporta ti rimanda l'ultimo file · /cancella toglie tutto quello che so di te",
 ].join("\n");
 
@@ -255,6 +257,16 @@ async function onCommand(cmd, arg, u, env, page) {
   if (cmd === "start" || cmd === "aiuto" || cmd === "help") {
     return send(env, id, HELP(u), page ? { reply_markup: { inline_keyboard: [[openButton(page)]] } } : {});
   }
+  if (cmd === "diario") {
+    const rows = (await env.DB.prepare("SELECT date, field, value FROM diary WHERE user_id = ? ORDER BY date, id LIMIT 200").bind(id).all()).results;
+    if (!rows.length) return send(env, id, "Non ho voci del diario da parte. Scrivimi peso, misure, allenamento o pasti quando vuoi.");
+    const lines = [];
+    for (const r of rows) {
+      const v = await unseal(env, id, r.value);
+      if (v) lines.push(`• ${r.date.split("-").slice(1).reverse().join("/")} · ${esc(r.field === "note" ? `nota: ${v}` : describeItem({ field: r.field, value: v }))}`);
+    }
+    return send(env, id, `📝 <b>Voci del diario da mettere nel file</b> (${rows.length}):\n${lines.join("\n")}\n\nEntrano nel diario la prossima volta che salvi in FitProgress.`);
+  }
   if (cmd === "esporta") {
     if (!u.last_json) return send(env, id, "Non hai ancora salvato niente: mandami le foto, apri FitProgress e tocca Salva.");
     const sent = await tg(env, "sendDocument", { chat_id: id, document: u.last_json, caption: "📦 Una copia dell'ultimo file dei progressi.\nResta qui 4 ore: per tenerla tocca «Conserva».", reply_markup: keepMarkup(false) });
@@ -297,21 +309,26 @@ async function onCommand(cmd, arg, u, env, page) {
   return send(env, id, HELP(u));
 }
 
+// Diario in chat: ogni messaggio resta (cifrato) finché non salvi in FitProgress, che lo mette nel diario del file.
+// Quello che non capisco resta come nota, e chiedo se è un allenamento o un pasto
 async function onDiary(text, u, env) {
   const today = localDate(Date.now(), tz(env));
   const { items, asks } = parseMessage(text, today);
   const now = Date.now();
-  for (const it of items) {
-    await env.DB.prepare("INSERT INTO diary (user_id, date, field, value, created_at) VALUES (?, ?, ?, ?, ?)").bind(u.id, it.date, it.field, await seal(env, u.id, it.value), now).run();
-  }
-  if (items.length) await send(env, u.id, `Segnato ${dayWords(items[0].date, today)}: ${esc(items.map(describeItem).join(" · "))}.`);
+  const add = async (date, field, value) => (await env.DB.prepare("INSERT INTO diary (user_id, date, field, value, created_at) VALUES (?, ?, ?, ?, ?) RETURNING id").bind(u.id, date, field, await seal(env, u.id, value), now).first()).id;
+  for (const it of items) await add(it.date, it.field, it.value);
+  if (items.length) await send(env, u.id, `✍️ Segnato ${dayWords(items[0].date, today)}: ${esc(items.map(describeItem).join(" · "))}.\nVa nel diario la prossima volta che salvi in FitProgress.`);
   for (const a of asks.slice(0, 3)) {
-    const row = await env.DB.prepare("INSERT INTO asks (user_id, date, text, created_at) VALUES (?, ?, ?, ?) RETURNING id").bind(u.id, a.date, await seal(env, u.id, a.ask.slice(0, 300)), now).first();
-    await send(env, u.id, `Non ho capito «${esc(a.ask.slice(0, 120))}». È un allenamento o un pasto?`, {
+    const note = (a.ask.charAt(0).toUpperCase() + a.ask.slice(1)).slice(0, 200);
+    const diaryId = await add(a.date, "note", note);
+    const row = await env.DB.prepare("INSERT INTO asks (user_id, date, text, created_at, diary_id) VALUES (?, ?, ?, ?, ?) RETURNING id").bind(u.id, a.date, await seal(env, u.id, note), now, diaryId).first();
+    await send(env, u.id, `✍️ Ho segnato «${esc(note.slice(0, 120))}» come nota ${dayWords(a.date, today)}. È un allenamento o un pasto?`, {
       reply_markup: { inline_keyboard: [[
         { text: "Allenamento", callback_data: `a:${row.id}:workout` },
         { text: "Pasto", callback_data: `a:${row.id}:meal` },
-        { text: "Lascia stare", callback_data: `a:${row.id}:no` },
+      ], [
+        { text: "Va bene come nota", callback_data: `a:${row.id}:note` },
+        { text: "Non segnarlo", callback_data: `a:${row.id}:no` },
       ]] },
     });
   }
@@ -338,8 +355,10 @@ async function onPhoto(msg, image, u, env, page) {
   const now = await getUser(env, u.id);
   if (now?.burst !== burst) return; // è arrivata un'altra foto: risponde lei
   const n = (await env.DB.prepare("SELECT COUNT(*) AS n FROM photos WHERE user_id = ?").bind(u.id).first()).n;
+  const d = (await env.DB.prepare("SELECT COUNT(*) AS n FROM diary WHERE user_id = ?").bind(u.id).first()).n;
   if (now.ack_id) await tg(env, "deleteMessage", { chat_id: u.id, message_id: now.ack_id }).catch(() => {});
-  const ack = await send(env, u.id, `📷 <b>${n === 1 ? "Ho 1 foto" : `Ho ${n} foto`}</b> da preparare.\nSe ne hai altre mandale pure. Quando hai finito, tocca <b>Apri FitProgress</b>.`,
+  const diaryLine = d ? `\n📝 Ho anche ${d === 1 ? "1 voce" : `${d} voci`} del diario: le metto nel file insieme alle foto.` : "";
+  const ack = await send(env, u.id, `📷 <b>${n === 1 ? "Ho 1 foto" : `Ho ${n} foto`}</b> da preparare.${diaryLine}\nSe hai altre foto mandale pure. Quando hai finito, tocca <b>Apri FitProgress</b>: le preparo e con <b>Salva</b> va tutto nel file.`,
     page ? { reply_markup: { inline_keyboard: [[openButton(page)]] } } : {});
   await setUser(env, u.id, "ack_id = ?", ack.message_id);
 }
@@ -404,16 +423,25 @@ async function onCallback(q, env, origin) {
     await answer(m[1] === "done" ? "Fatto" : "Te lo ricordo domani");
     return edit(m[1] === "done" ? `Fatto. Il prossimo promemoria il ${shortDate(next, tz(env))}.\n\nMandami le foto qui, poi aprile in FitProgress.` : `Te lo ricordo domani alle ${u.hour}.`, m[1] === "done" ? keepOpen : undefined);
   }
-  if ((m = data.match(/^a:(\d+):(workout|meal|no)$/))) {
+  if ((m = data.match(/^a:(\d+):(workout|meal|note|no)$/))) {
     const ask = await env.DB.prepare("SELECT * FROM asks WHERE id = ? AND user_id = ?").bind(+m[1], uid).first();
     await env.DB.prepare("DELETE FROM asks WHERE id = ? AND user_id = ?").bind(+m[1], uid).run();
     if (!ask) { await answer(); return edit("Già fatto."); }
     const text = (await unseal(env, uid, ask.text)) || "";
-    if (m[2] === "no" || !text) { await answer(); return edit(`Lasciato stare: «${esc(text)}».`); }
-    const value = (text.charAt(0).toUpperCase() + text.slice(1)).slice(0, TEXT_FIELDS[m[2]]);
-    await env.DB.prepare("INSERT INTO diary (user_id, date, field, value, created_at) VALUES (?, ?, ?, ?, ?)").bind(uid, ask.date, m[2], await seal(env, uid, value), Date.now()).run();
+    const day = dayWords(ask.date, localDate(Date.now(), tz(env)));
+    // La nota è già nel diario in attesa: si sposta, si lascia o si toglie
+    const row = ask.diary_id ? await env.DB.prepare("SELECT id FROM diary WHERE id = ? AND user_id = ?").bind(ask.diary_id, uid).first() : null;
+    if (m[2] === "no") {
+      if (row) await env.DB.prepare("DELETE FROM diary WHERE id = ?").bind(row.id).run();
+      await answer("Non segnato");
+      return edit(`Non l'ho segnato: «${esc(text)}».`);
+    }
+    if (m[2] === "note") { await answer("Resta come nota"); return edit(`✍️ Segnato ${day} come nota: «${esc(text)}».`); }
+    const value = text.slice(0, TEXT_FIELDS[m[2]]);
+    if (row) await env.DB.prepare("UPDATE diary SET field = ?, value = ? WHERE id = ?").bind(m[2], await seal(env, uid, value), row.id).run();
+    else await env.DB.prepare("INSERT INTO diary (user_id, date, field, value, created_at) VALUES (?, ?, ?, ?, ?)").bind(uid, ask.date, m[2], await seal(env, uid, value), Date.now()).run();
     await answer("Segnato");
-    return edit(`Segnato ${dayWords(ask.date, localDate(Date.now(), tz(env)))}: ${esc(describeItem({ field: m[2], value }))}.`);
+    return edit(`✍️ Segnato ${day}: ${esc(describeItem({ field: m[2], value }))}.`);
   }
   return answer();
 }
@@ -471,13 +499,13 @@ async function dropSaves(env) {
   }
 }
 
-// Foto e voci non prese entro KEEP_DAYS, domande senza risposta, sessioni scadute, conteggi vecchi: via
+// Foto non prese entro KEEP_DAYS, domande senza risposta (la nota resta nel diario), sessioni scadute, conteggi vecchi: via.
+// Le voci del diario restano finché non salvi
 async function cleanup(env) {
   const now = Date.now(), old = now - KEEP_DAYS * 864e5;
   const day = localDate(now - 3 * 864e5, tz(env));
   await env.DB.batch([
     env.DB.prepare("DELETE FROM photos WHERE sent_at < ?").bind(Math.floor(old / 1000)),
-    env.DB.prepare("DELETE FROM diary WHERE created_at < ?").bind(old),
     env.DB.prepare("DELETE FROM asks WHERE created_at < ?").bind(old),
     env.DB.prepare("DELETE FROM sessions WHERE last_at < ? OR created_at < ?").bind(now - SESSION_IDLE, now - SESSION_MAX),
     env.DB.prepare("DELETE FROM usage WHERE day < ?").bind(day),
@@ -569,7 +597,7 @@ async function api(request, env, url) {
     return json({
       json: !!u.last_json,
       photos: await Promise.all(photos.map(async (r) => ({ id: r.id, date: r.sent_at, caption: await open(r.caption) }))),
-      diary: (await Promise.all(diary.filter((r) => NUM_FIELDS[r.field] || TEXT_FIELDS[r.field]).map(async (r) => ({ ...r, value: await open(r.value) })))).filter((r) => r.value),
+      diary: (await Promise.all(diary.filter((r) => NUM_FIELDS[r.field] || TEXT_FIELDS[r.field] || r.field === "note").map(async (r) => ({ ...r, value: await open(r.value) })))).filter((r) => r.value),
     });
   }
 
@@ -637,6 +665,7 @@ async function setup(request, env, url) {
   await tg(env, "setWebhook", { url: `${url.origin}/telegram`, secret_token: env.WEBHOOK_SECRET, allowed_updates: ["message", "callback_query"], drop_pending_updates: true, max_connections: 10 });
   await tg(env, "setMyCommands", { commands: [
     { command: "start", description: "Come funziona" },
+    { command: "diario", description: "Le voci del diario che ho tenuto da parte" },
     { command: "esporta", description: "L'ultimo file dei progressi" },
     { command: "promemoria", description: "Quando ti ricordo le foto" },
     { command: "ogni", description: "Ogni quanti giorni: /ogni 14" },
