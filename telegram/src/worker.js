@@ -1,8 +1,9 @@
 // Bot Telegram di FitProgress (Cloudflare Worker).
 //
 // - /telegram   messaggi da Telegram (webhook, solo col codice segreto WEBHOOK_SECRET): diario, foto, comandi, pulsanti
-// - /api/…      la pagina aperta dentro Telegram (Mini App): coi dati firmati da Telegram e la password (per ora la
-//               stessa del codice d'accesso: vedi APPUNTI.md) una sessione breve. Stato, file, salva
+// - /api/…      la pagina aperta dentro Telegram (Mini App): coi dati firmati da Telegram, se l'utente è già entrato
+//               (password scritta al bot), una sessione breve. Stato, file, salva.
+//               /api/check: la piattaforma (GitHub Pages) controlla la password all'apertura
 // - /setup      collega il bot a questo Worker (webhook, comandi, pulsante del menu): una volta sola, con WEBHOOK_SECRET
 // - cron        ogni 15 minuti: promemoria per le foto, salvataggi non conservati da togliere (4 ore), pulizia
 // - il resto    la pagina stessa (index.html e vendor/, copiati in public/ da npm run build, con public/_headers)
@@ -23,8 +24,10 @@ const KEEP_DAYS = 7; // foto e voci non prese dalla pagina
 const SESSION_IDLE = 2 * 3600e3, SESSION_MAX = 12 * 3600e3;
 const INIT_MAX_AGE = 12 * 3600; // dati firmati da Telegram: quanto valgono per aprire (o riaprire) una sessione
 const SAVE_TTL = 4 * 3600e3; // salvataggi nella chat non conservati: via dopo 4 ore (l'ultimo resta)
-// Al giorno, per utente. newuser: utenti nuovi in tutto; code: tentativi col codice d'accesso
-const LIMITS = { msg: 300, photo: 40, save: 60, api: 3000, newuser: 30, code: 5 };
+// Al giorno, per utente. newuser: utenti nuovi in tutto; code: password sbagliate nel bot (per utente);
+// pcode: password sbagliate dalla piattaforma (per indirizzo IP); pcheck: password sbagliate dalla piattaforma in tutto
+const LIMITS = { msg: 300, photo: 40, save: 60, api: 3000, newuser: 30, code: 5, pcode: 10, pcheck: 500 };
+const BURST_MS = 4000; // foto in blocco: si risponde una volta sola, dopo questa pausa senza foto nuove
 const enc = new TextEncoder();
 const tz = (env) => env.TIME_ZONE || "Europe/Rome";
 
@@ -165,6 +168,7 @@ const setUser = (env, id, sql, ...args) => env.DB.prepare(`UPDATE users SET ${sq
 // D1 accetta al massimo 100 valori per query: gli elenchi di righe vanno a pezzi
 const chunks = (xs, n = 90) => Array.from({ length: Math.ceil(xs.length / n) }, (_, i) => xs.slice(i * n, i * n + n));
 // Conta un'azione di oggi; risponde se è ancora dentro il limite
+const used = async (env, userId, kind) => (await env.DB.prepare("SELECT n FROM usage WHERE user_id = ? AND day = ? AND kind = ?").bind(userId, localDate(Date.now(), tz(env)), kind).first())?.n || 0;
 async function within(env, userId, kind, n = 1) {
   const day = localDate(Date.now(), tz(env));
   const row = await env.DB.prepare("INSERT INTO usage (user_id, day, kind, n) VALUES (?, ?, ?, ?) ON CONFLICT (user_id, day, kind) DO UPDATE SET n = n + excluded.n RETURNING n")
@@ -189,22 +193,23 @@ async function onUpdate(update, env, origin) {
 }
 
 const HELP = (u) => [
-  "<b>FitProgress</b>",
+  "<b>Come funziona</b>",
   "",
-  "📷 <b>Foto dei progressi</b>: mandamele qui (anche normali, non come file). Scrivi nella didascalia <i>fronte</i>, <i>lato</i> o <i>schiena</i> se vuoi. Poi tocca <b>Apri FitProgress</b>: la pagina le allinea e le misura, e Salva rimanda qui il file dei progressi, cifrato.",
+  "1️⃣ Fai le foto dei progressi e <b>mandamele qui</b>, anche tutte insieme. Se vuoi, scrivi nella didascalia <i>fronte</i>, <i>lato</i> o <i>schiena</i>.",
+  "2️⃣ Tocca <b>Apri FitProgress</b>: le allineo e le misuro.",
+  "3️⃣ Controlla e tocca <b>Salva</b>: ti rimando qui il file dei progressi.",
   "",
-  "📌 <b>Storico</b>: ogni salvataggio arriva qui e sparisce dopo 4 ore, tranne l'ultimo. Per tenerne uno tocca <b>Conserva</b> sotto il file.",
+  "📌 Ogni file resta qui 4 ore, l'ultimo sempre. Per tenerne uno, tocca <b>Conserva</b> sotto il file.",
   "",
-  "📝 <b>Diario</b>: scrivimi",
-  "• <code>82,4</code> · <code>grasso 18</code> · <code>vita 84</code>",
-  "• <code>gambe 60 min</code> · <code>allenamento: spinta</code>",
-  "• <code>cena ieri: pizza e birra</code>",
+  "📝 <b>Diario</b>: scrivimi quando vuoi, per esempio",
+  "• il peso: <code>82,4</code>",
+  "• una misura: <code>vita 84</code> · <code>grasso 18</code>",
+  "• l'allenamento: <code>gambe 60 min</code>",
+  "• un pasto: <code>cena ieri pizza</code>",
   "",
-  `⏰ <b>Promemoria</b>: ogni ${u.every_days} giorni alle ${u.hour}${u.paused ? " (in pausa)" : ""}. /ogni 7 · /ora 19 · /pausa · /riprendi`,
+  `⏰ Ogni ${u.every_days} giorni alle ${u.hour} ti ricordo le foto${u.paused ? " (ora in pausa)" : ""}. Per cambiarlo: /promemoria`,
   "",
-  "🔒 FitProgress si apre con la password che ti hanno dato (la stessa del codice), e il file dei progressi è cifrato con lei.",
-  "📦 /esporta ti rimanda l'ultimo file dei progressi. Per ripartire da un file conservato, inoltralo qui.",
-  "🗑 /cancella toglie tutto quello che il bot sa di te.",
+  "/start rivede questo messaggio · /esporta ti rimanda l'ultimo file · /cancella toglie tutto quello che so di te",
 ].join("\n");
 
 async function onMessage(msg, env, origin) {
@@ -219,28 +224,30 @@ async function onMessage(msg, env, origin) {
   if (image) return onPhoto(msg, image, u, env, page);
   if (msg.document) return onDocument(msg, u, env, page);
   const text = (msg.text || "").trim();
-  if (!text) return send(env, uid, "Mandami una foto dei progressi, oppure scrivimi peso, misure, allenamento o pasto. /start per l'aiuto.");
+  if (!text) return send(env, uid, "Mandami le foto dei progressi, oppure scrivimi peso, misure, allenamento o pasto. /start per vedere come funziona.");
   const cmd = text.match(/^\/([a-z]+)(?:@\w+)?\s*(.*)$/is);
   if (cmd) return onCommand(cmd[1].toLowerCase(), cmd[2].trim(), u, env, page);
   return onDiary(text, u, env);
 }
 
-// Non ancora ammesso: si entra scrivendo il codice d'accesso. Il messaggio col codice si toglie dalla chat.
+// Non ancora entrato: la password (ACCESS_CODE), scritta qui una volta sola. Il messaggio si toglie subito dalla chat.
 // 5 tentativi al giorno; finché non entri il bot non tiene niente di te (solo il conteggio dei tentativi)
 async function askCode(msg, env, origin) {
   const uid = msg.from.id, text = (msg.text || "").trim();
-  if (!text || /^\/start\b/.test(text) || text.startsWith("/")) {
-    return send(env, uid, "Ciao! FitProgress per ora è su invito: scrivimi il codice d'accesso che ti hanno dato.");
+  if (!text || text.startsWith("/")) {
+    return send(env, uid, "Ciao! Sono il bot di <b>FitProgress</b>: confronto le foto dei progressi in palestra e tengo il diario di peso, misure, allenamenti e pasti.\n\nPer ora è riservato a chi ha la password: <b>scrivimela qui sotto</b>. Te la chiedo solo questa volta, e il messaggio lo cancello subito.");
   }
-  if (!(await within(env, uid, "code"))) return send(env, uid, "Troppi tentativi per oggi. Riprova domani.");
-  const good = !!env.ACCESS_CODE && safeEqual(text, env.ACCESS_CODE);
-  await tg(env, "deleteMessage", { chat_id: uid, message_id: msg.message_id }).catch(() => {}); // il codice non resta in chat
-  if (!good) return send(env, uid, "Codice sbagliato.");
+  await tg(env, "deleteMessage", { chat_id: uid, message_id: msg.message_id }).catch(() => {}); // la password non resta in chat
+  if (!env.ACCESS_CODE || !safeEqual(text, env.ACCESS_CODE)) {
+    if (!(await within(env, uid, "code"))) return send(env, uid, "Troppi tentativi per oggi. Riprova domani.");
+    const left = LIMITS.code - (await used(env, uid, "code"));
+    return send(env, uid, left > 0 ? `Password sbagliata. ${left === 1 ? "Ti resta 1 tentativo" : `Ti restano ${left} tentativi`} per oggi.` : "Password sbagliata. Per oggi i tentativi sono finiti: riprova domani.");
+  }
   const u = await ensureUser(env, uid);
   if (!u) return send(env, uid, "Oggi non posso accettare utenti nuovi. Riprova domani.");
   await setUser(env, uid, "admitted = 1");
   const page = await pageUrl(env, origin);
-  return send(env, uid, `Sei dentro.\n\n${HELP(u)}`, page ? { reply_markup: { inline_keyboard: [[openButton(page)]] } } : {});
+  return send(env, uid, `✅ <b>Sei dentro.</b> La password non te la chiedo più, nemmeno quando apri FitProgress da qui.\n\n${HELP(u)}`, page ? { reply_markup: { inline_keyboard: [[openButton(page)]] } } : {});
 }
 
 async function onCommand(cmd, arg, u, env, page) {
@@ -249,12 +256,12 @@ async function onCommand(cmd, arg, u, env, page) {
     return send(env, id, HELP(u), page ? { reply_markup: { inline_keyboard: [[openButton(page)]] } } : {});
   }
   if (cmd === "esporta") {
-    if (!u.last_json) return send(env, id, "Non c'è ancora un file dei progressi: aprili in FitProgress e tocca Salva.");
-    const sent = await tg(env, "sendDocument", { chat_id: id, document: u.last_json, caption: "L'ultimo file dei progressi, cifrato. Questa copia sparisce fra 4 ore: tocca Conserva per tenerla.", reply_markup: keepMarkup(false) });
+    if (!u.last_json) return send(env, id, "Non hai ancora salvato niente: mandami le foto, apri FitProgress e tocca Salva.");
+    const sent = await tg(env, "sendDocument", { chat_id: id, document: u.last_json, caption: "📦 Una copia dell'ultimo file dei progressi.\nResta qui 4 ore: per tenerla tocca «Conserva».", reply_markup: keepMarkup(false) });
     return trackSave(env, id, sent);
   }
   if (cmd === "cancella") {
-    return send(env, id, "Tolgo tutto quello che il bot sa di te: l'accesso (poi serve di nuovo il codice), promemoria, foto e voci in attesa, il collegamento all'ultimo file dei progressi. I messaggi e i file in questa chat restano: per toglierli cancella la chat.\n\nSei sicuro?", {
+    return send(env, id, "Tolgo tutto quello che so di te: l'accesso (poi ti chiedo di nuovo la password), i promemoria, le foto e le voci del diario non ancora salvate, il collegamento all'ultimo file dei progressi.\n\nQuello che c'è in questa chat resta: per toglierlo, cancella la chat.\n\nSei sicuro?", {
       reply_markup: { inline_keyboard: [[{ text: "Sì, cancella tutto", callback_data: "x:yes" }, { text: "No", callback_data: "x:no" }]] },
     });
   }
@@ -284,8 +291,8 @@ async function onCommand(cmd, arg, u, env, page) {
     return send(env, id, `Promemoria ripresi: il prossimo il ${shortDate(next, tz(env))} alle ${u.hour}.`);
   }
   if (cmd === "promemoria") {
-    return send(env, id, u.paused ? "Promemoria in pausa. /riprendi quando vuoi."
-      : `Ogni ${u.every_days} giorni alle ${u.hour}. Il prossimo il ${shortDate(u.next_at, tz(env))}.`);
+    const now = u.paused ? "⏸ I promemoria sono in pausa." : `⏰ Ti ricordo le foto ogni ${u.every_days} giorni alle ${u.hour}. Il prossimo il ${shortDate(u.next_at, tz(env))}.`;
+    return send(env, id, `${now}\n\nPer cambiare:\n• /ogni 7 · ogni quanti giorni\n• /ora 19 · a che ora\n• /pausa · li fermo\n• /riprendi · li riprendo`);
   }
   return send(env, id, HELP(u));
 }
@@ -300,7 +307,7 @@ async function onDiary(text, u, env) {
   if (items.length) await send(env, u.id, `Segnato ${dayWords(items[0].date, today)}: ${esc(items.map(describeItem).join(" · "))}.`);
   for (const a of asks.slice(0, 3)) {
     const row = await env.DB.prepare("INSERT INTO asks (user_id, date, text, created_at) VALUES (?, ?, ?, ?) RETURNING id").bind(u.id, a.date, await seal(env, u.id, a.ask.slice(0, 300)), now).first();
-    await send(env, u.id, `Non ho capito «${esc(a.ask.slice(0, 120))}». Cos'è?`, {
+    await send(env, u.id, `Non ho capito «${esc(a.ask.slice(0, 120))}». È un allenamento o un pasto?`, {
       reply_markup: { inline_keyboard: [[
         { text: "Allenamento", callback_data: `a:${row.id}:workout` },
         { text: "Pasto", callback_data: `a:${row.id}:meal` },
@@ -317,21 +324,24 @@ function dayWords(date, today) {
   return date === y.toISOString().slice(0, 10) ? `per ieri, ${d}` : `per il ${d}`;
 }
 
+// Foto in blocco: ognuna si mette in attesa; la risposta è una sola, mandata dopo BURST_MS senza foto nuove
+// (l'ultima foto arrivata vince: burst). La risposta di prima si toglie, così quella giusta è sempre in fondo
 async function onPhoto(msg, image, u, env, page) {
-  if (image.file_size > MAX_FILE) return send(env, u.id, "Questa foto è troppo grande per il bot (oltre 20 MB): mandala come foto normale.");
-  if (!(await within(env, u.id, "photo"))) return send(env, u.id, "Per oggi ho già tutte le foto che posso prendere. Mandamela domani.");
-  // Una foto conta come promemoria fatto
-  await setUser(env, u.id, "next_at = ?", nextReminder(Date.now(), u.every_days, u.hour, tz(env)));
-  const row = await env.DB.prepare("INSERT INTO photos (user_id, file_id, message_id, sent_at, caption) VALUES (?, ?, ?, ?, ?) RETURNING id")
-    .bind(u.id, image.file_id, msg.message_id, msg.date, msg.caption ? await seal(env, u.id, msg.caption.slice(0, 200)) : "").first();
-  // Un album arriva come tanti messaggi: si risponde una volta sola
-  if (msg.media_group_id && msg.media_group_id === u.last_group) return;
-  if (msg.media_group_id) await setUser(env, u.id, "last_group = ?", msg.media_group_id);
-  const reply = await send(env, u.id, `${msg.media_group_id ? "Foto ricevute. Aprile" : "Foto ricevuta. Aprila"} in FitProgress: la preparo lì, poi tocca Salva. Resta in attesa ${KEEP_DAYS} giorni.`, {
-    reply_parameters: { message_id: msg.message_id },
-    ...(page ? { reply_markup: { inline_keyboard: [[openButton(page)]] } } : {}),
-  });
-  await env.DB.prepare("UPDATE photos SET reply_id = ? WHERE id = ?").bind(reply.message_id, row.id).run();
+  if (image.file_size > MAX_FILE) return send(env, u.id, "Questa foto è troppo grande (oltre 20 MB): mandala come foto normale, non come file.");
+  if (!(await within(env, u.id, "photo"))) return send(env, u.id, "Per oggi ho già tutte le foto che posso prendere. Mandami le altre domani.");
+  await env.DB.prepare("INSERT INTO photos (user_id, file_id, message_id, sent_at, caption) VALUES (?, ?, ?, ?, ?)")
+    .bind(u.id, image.file_id, msg.message_id, msg.date, msg.caption ? await seal(env, u.id, msg.caption.slice(0, 200)) : "").run();
+  // Le foto contano come promemoria fatto
+  const burst = crypto.randomUUID();
+  await setUser(env, u.id, "next_at = ?, burst = ?", nextReminder(Date.now(), u.every_days, u.hour, tz(env)), burst);
+  await new Promise((r) => setTimeout(r, Number(env.BURST_MS) || BURST_MS));
+  const now = await getUser(env, u.id);
+  if (now?.burst !== burst) return; // è arrivata un'altra foto: risponde lei
+  const n = (await env.DB.prepare("SELECT COUNT(*) AS n FROM photos WHERE user_id = ?").bind(u.id).first()).n;
+  if (now.ack_id) await tg(env, "deleteMessage", { chat_id: u.id, message_id: now.ack_id }).catch(() => {});
+  const ack = await send(env, u.id, `📷 <b>${n === 1 ? "Ho 1 foto" : `Ho ${n} foto`}</b> da preparare.\nSe ne hai altre mandale pure. Quando hai finito, tocca <b>Apri FitProgress</b>.`,
+    page ? { reply_markup: { inline_keyboard: [[openButton(page)]] } } : {});
+  await setUser(env, u.id, "ack_id = ?", ack.message_id);
 }
 
 // Un file inoltrato: se è un file dei progressi cifrato per questo utente, si riparte da lì
@@ -341,15 +351,17 @@ async function onDocument(msg, u, env, page) {
   const { id } = await fileKey(env.MASTER_KEY, u.id);
   let head = null;
   try { head = await fileHead(env, doc.file_id, PP_HEADER); } catch { /* non si scarica */ }
-  if (!isPasswordFile(head) && !isFileFor(head, id)) return send(env, u.id, "Non è un file dei progressi: inoltrami un file che ti ho mandato io.");
+  if (!isPasswordFile(head) && !isFileFor(head, id)) return send(env, u.id, "Questo non è un file dei progressi. Per ripartire da un salvataggio vecchio, inoltrami uno dei file che ti ho mandato io.");
   await setUser(env, u.id, "last_json = ?, last_msg = ?", doc.file_id, msg.message_id);
-  return send(env, u.id, "Riparto da questo file dei progressi: aprilo in FitProgress.", page ? { reply_markup: { inline_keyboard: [[openButton(page)]] } } : {});
+  return send(env, u.id, "Riparto da questo file dei progressi: tocca <b>Apri FitProgress</b>.", page ? { reply_markup: { inline_keyboard: [[openButton(page)]] } } : {});
 }
 
 // Tutto quello che il bot sa di un utente, via
 async function forget(env, uid) {
   const photos = (await env.DB.prepare("SELECT message_id, reply_id FROM photos WHERE user_id = ?").bind(uid).all()).results;
   const messages = photos.flatMap((r) => [r.message_id, r.reply_id]).filter(Boolean);
+  const ack = (await getUser(env, uid))?.ack_id;
+  if (ack) messages.push(ack);
   for (const m of chunks(messages, 100)) await tg(env, "deleteMessages", { chat_id: uid, message_ids: m }).catch(() => {});
   await env.DB.batch(["photos", "diary", "asks", "sessions", "usage", "saves"].map((t) => env.DB.prepare(`DELETE FROM ${t} WHERE user_id = ?`).bind(uid))
     .concat(env.DB.prepare("DELETE FROM users WHERE id = ?").bind(uid)));
@@ -416,7 +428,7 @@ async function reminderText(env, u) {
   const lines = guide?.lines?.length
     ? [`${esc(guide.pose)}, come nel riferimento:`, ...guide.lines.map((l) => `• ${safeLine(l)}`)]
     : ["Stesso posto, stessa luce, stessa distanza dallo specchio. In FitProgress, nella scheda Guida, scegli una foto di riferimento: qui ti ricordo i suoi numeri."];
-  return ["📷 <b>Oggi foto dei progressi</b>", "", ...lines, "", "Mandamele qui quando le hai fatte."].join("\n");
+  return ["📷 <b>Oggi tocca alle foto dei progressi</b>", "", ...lines, "", "Quando le hai fatte, mandamele qui (anche tutte insieme)."].join("\n");
 }
 async function reminders(env) {
   const now = Date.now(), page = await pageUrl(env, null);
@@ -489,29 +501,40 @@ function cleanGuide(s) {
 }
 const IMAGE_TYPES = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", heic: "image/heic", heif: "image/heif" };
 
-// Entrare: dati firmati da Telegram e la password, che per ora è il codice d'accesso (lo stesso per tutti i tester:
-// vedi APPUNTI.md). Chi la scrive giusta qui è anche ammesso al bot. Tentativi: gli stessi 5 al giorno del bot.
-// Risponde una sessione breve; fileKey serve solo ad aprire i file della chat della versione di prima (FPE1)
+// Entrare dalla pagina aperta dal bot: dati firmati da Telegram e accesso già fatto nel bot (password scritta una
+// volta in chat), niente altro. Risponde una sessione breve e la password con cui la pagina cifra il file dei
+// progressi (per ora la stessa per tutti i tester: vedi APPUNTI.md). fileKey: solo per i file della versione di prima
 async function login(request, env) {
   if (request.method !== "POST") return json({ error: "missing" }, 404);
   const auth = request.headers.get("Authorization") || "";
   const who = auth.startsWith("tma ") ? await checkInitData(auth.slice(4), env.BOT_TOKEN, Date.now(), INIT_MAX_AGE) : null;
   if (!who) return json({ error: "auth" }, 401);
-  const body = await request.json().catch(() => null);
-  const code = typeof body?.code === "string" ? body.code.slice(0, 200) : "";
-  if (!env.ACCESS_CODE || !safeEqual(code, env.ACCESS_CODE)) {
-    if (!(await within(env, who.id, "code"))) return json({ error: "limit" }, 429);
-    const used = (await env.DB.prepare("SELECT n FROM usage WHERE user_id = ? AND day = ? AND kind = 'code'").bind(who.id, localDate(Date.now(), tz(env))).first())?.n || 0;
-    return json({ error: "password", left: Math.max(0, LIMITS.code - used) }, 401);
-  }
-  const u = (await getUser(env, who.id)) || await ensureUser(env, who.id);
-  if (!u) return json({ error: "limit" }, 429);
-  if (!u.admitted && !isAdmin(env, u.id)) await setUser(env, u.id, "admitted = 1");
+  const existing = await getUser(env, who.id);
+  if (!allowed(env, who.id, existing)) return json({ error: "invite" }, 403);
+  const u = existing || await ensureUser(env, who.id);
+  if (!u || !env.ACCESS_CODE) return json({ error: "limit" }, 429);
   if (!(await within(env, u.id, "api"))) return json({ error: "limit" }, 429);
   const now = Date.now(), token = newToken();
   await env.DB.prepare("INSERT INTO sessions (token_hash, user_id, created_at, last_at) VALUES (?, ?, ?, ?)").bind(await tokenHash(token), u.id, now, now).run();
   const fk = await fileKey(env.MASTER_KEY, u.id);
-  return json({ token, fileKey: b64u(fk.raw) });
+  return json({ token, code: env.ACCESS_CODE, fileKey: b64u(fk.raw) });
+}
+
+// La piattaforma (fuori da Telegram) controlla la password all'apertura: risponde solo se è giusta. Da qualunque
+// sito (CORS *, niente cookie). Password sbagliate: 10 al giorno per indirizzo IP, 500 al giorno in tutto
+const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST", "Access-Control-Max-Age": "86400" };
+async function check(request, env) {
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
+  if (request.method !== "POST") return json({ error: "missing" }, 404);
+  const ip = request.headers.get("CF-Connecting-IP") || "?";
+  const ipId = -parseInt((await tokenHash(`${env.MASTER_KEY}:${ip}`)).slice(0, 12), 16); // negativo: non è un utente
+  const reply = (data, status) => new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json", ...SECURITY_HEADERS, ...CORS } });
+  if ((await used(env, ipId, "pcode")) >= LIMITS.pcode || (await used(env, 0, "pcheck")) >= LIMITS.pcheck) return reply({ error: "limit" }, 429);
+  const code = (await request.text().catch(() => "")).slice(0, 200);
+  if (env.ACCESS_CODE && safeEqual(code, env.ACCESS_CODE)) return reply({ ok: true }, 200);
+  await within(env, ipId, "pcode");
+  await within(env, 0, "pcheck");
+  return reply({ error: "password", left: Math.max(0, LIMITS.pcode - (await used(env, ipId, "pcode"))) }, 401);
 }
 
 // La sessione della richiesta: l'utente, o null (scaduta, o di qualcuno che non può più entrare)
@@ -528,6 +551,7 @@ async function session(request, env) {
 }
 
 async function api(request, env, url) {
+  if (url.pathname === "/api/check") return check(request, env);
   if (url.pathname === "/api/login") return login(request, env);
   const u = await session(request, env);
   if (!u) return json({ error: "session" }, 401);
@@ -571,7 +595,7 @@ async function api(request, env, url) {
     const note = fromB64url(request.headers.get("X-FP-Note")).replace(/[\r\n]+/g, " ").slice(0, 200);
     const guide = cleanGuide(fromB64url(request.headers.get("X-FP-Guide")));
     const day = localDate(Date.now(), tz(env));
-    const caption = `Progressi del ${day.split("-").reverse().join("/")}, cifrati con la password${note ? ` · ${note}` : ""}.\nSparisce fra 4 ore se non tocchi Conserva (l'ultimo resta finché non salvi di nuovo).`;
+    const caption = `💾 Progressi del ${day.split("-").reverse().join("/")}${note ? ` · ${note}` : ""}.\nResta qui 4 ore, a meno che non tocchi «Conserva». L'ultimo salvataggio resta sempre.`;
     let sent;
     try { sent = await sendDocumentStream(env, u.id, request.body, length, `fitprogress-${day}.fitprogress`, caption, keepMarkup(false)); } catch (e) {
       if (e.status === 400) return json({ error: "not-encrypted" }, 400);
@@ -586,6 +610,12 @@ async function api(request, env, url) {
       const messages = rows.flatMap((r) => [r.message_id, r.reply_id]).filter(Boolean);
       for (const m of chunks(messages, 100)) await tg(env, "deleteMessages", { chat_id: u.id, message_ids: m }).catch(() => {}); // oltre 48 ore Telegram non le toglie
       await env.DB.prepare(`DELETE FROM photos WHERE user_id = ? AND id IN (${marks})`).bind(u.id, ...part).run();
+    }
+    // Le foto in attesa sono finite: via anche il messaggio "Ho N foto"
+    const left = (await env.DB.prepare("SELECT COUNT(*) AS n FROM photos WHERE user_id = ?").bind(u.id).first()).n;
+    if (!left && u.ack_id) {
+      await tg(env, "deleteMessage", { chat_id: u.id, message_id: u.ack_id }).catch(() => {});
+      await setUser(env, u.id, "ack_id = NULL");
     }
     for (const part of chunks(ids(request, "X-FP-Diary"))) {
       await env.DB.prepare(`DELETE FROM diary WHERE user_id = ? AND id IN (${part.map(() => "?").join(",")})`).bind(u.id, ...part).run();

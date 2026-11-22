@@ -14,7 +14,9 @@ CREATE TABLE IF NOT EXISTS users (
   last_group TEXT,                         -- ultimo album di foto ricevuto (si risponde una volta sola)
   created_at INTEGER NOT NULL,
   admitted INTEGER NOT NULL DEFAULT 0,     -- 1: ha scritto il codice d'accesso
-  last_msg INTEGER                         -- il messaggio nella chat con l'ultimo file (non si toglie mai)
+  last_msg INTEGER,                        -- il messaggio nella chat con l'ultimo file (non si toglie mai)
+  burst TEXT,                              -- foto in blocco: l'ultima arrivata (risponde lei)
+  ack_id INTEGER                           -- il messaggio "Ho N foto"
 );
 
 -- Salvataggi mandati nella chat: quelli non conservati (kept = 0) si tolgono dopo 4 ore, tranne l'ultimo
