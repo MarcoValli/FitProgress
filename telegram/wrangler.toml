@@ -1,0 +1,25 @@
+# Bot Telegram di FitProgress: vedi README.md in questa cartella
+name = "fitprogress-bot"
+main = "src/worker.js"
+compatibility_date = "2026-09-01"
+workers_dev = true
+
+# La pagina (index.html e vendor/), copiata da npm run build
+[assets]
+directory = "./public"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "fitprogress"
+database_id = "DA-COMPILARE" # l'id che risponde: npx wrangler d1 create fitprogress
+
+# Promemoria: ogni ora si mandano quelli in scadenza
+[triggers]
+crons = ["0 * * * *"]
+
+[vars]
+TIME_ZONE = "Europe/Rome"
+# ID Telegram che possono usare il bot, separati da virgole, oppure * per tutti.
+# Vuoto: nessuno, e a /start il bot ti dice il tuo ID da mettere qui
+ALLOWED_IDS = ""
+# Segreti (non qui): npx wrangler secret put BOT_TOKEN · npx wrangler secret put WEBHOOK_SECRET
