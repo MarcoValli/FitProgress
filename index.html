@@ -7,7 +7,7 @@
      Script: parte solo quello di questa pagina, riconosciuto dalla sua impronta SHA-256 (più le librerie
      controllate, come blob:, e lo script di Telegram, caricato solo dentro Telegram). Dopo ogni modifica allo
      script: node tools/csp-hash.mjs, se no la pagina non parte (a ogni push lo fa anche la GitHub Action). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-TpcFPEyDrYKjSkmDEMdHUhpKEjHfYJn8NsSYmGusLvE=' blob: 'wasm-unsafe-eval' https://telegram.org/js/telegram-web-app.js; connect-src 'self' blob: data: https://cdn.jsdelivr.net/npm/heic-to@1.6.7/dist/csp/heic-to.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/vision_bundle.mjs https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.wasm https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task; img-src 'self' blob: data:; style-src 'unsafe-inline'; worker-src 'self' blob:; manifest-src 'self'; base-uri 'none'; object-src 'none'; frame-src 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-DcUScuKbjBy7ubxjlS0g7LeVe3nvMSw8iUSBjCelJLw=' blob: 'wasm-unsafe-eval' https://telegram.org/js/telegram-web-app.js; connect-src 'self' blob: data: https://cdn.jsdelivr.net/npm/heic-to@1.6.7/dist/csp/heic-to.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/vision_bundle.mjs https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.wasm https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task; img-src 'self' blob: data:; style-src 'unsafe-inline'; worker-src 'self' blob:; manifest-src 'self'; base-uri 'none'; object-src 'none'; frame-src 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -388,7 +388,6 @@
   .link { border: 0; background: none; color: var(--accent); cursor: pointer; padding: 0; font: inherit; font-size: 12px; text-transform: none; letter-spacing: 0; font-weight: 500; }
   .link:hover { text-decoration: underline; }
   .warn { margin: 0; padding: 8px 10px; border-radius: 8px; background: rgba(255,162,76,.12); color: #ffc58f; font-size: 12px; }
-  #pwError:empty { display: none; }
   .switch small { display: block; color: var(--faint); font-size: 11.5px; margin-top: 2px; }
   .pose-label { color: var(--muted); font-size: 12px; margin-bottom: -4px; }
 
@@ -875,19 +874,6 @@
   <nav class="ed-tools" id="edTools" role="tablist" aria-label="Strumenti"></nav>
 </dialog>
 
-<!-- Password, solo dentro Telegram: senza non si entra (Esc non la chiude) -->
-<dialog class="dialog small" id="pwDialog" aria-labelledby="pwTitle">
-  <form id="pwForm" novalidate>
-    <header><h2 id="pwTitle">Password</h2><p class="intro" id="pwIntro"></p></header>
-    <div class="body">
-      <label class="field"><span>Password</span><input class="input" type="password" id="pwInput" autocomplete="current-password" maxlength="200" required></label>
-      <label class="field" id="pwAgainRow"><span>Ancora una volta</span><input class="input" type="password" id="pwAgain" autocomplete="new-password" maxlength="200"></label>
-      <p class="warn" id="pwError" role="alert" aria-live="polite"></p>
-    </div>
-    <footer><button class="btn primary" type="submit" id="pwOk">Entra</button></footer>
-  </form>
-</dialog>
-
 <!-- File dei progressi pronto: sul telefono il foglio di condivisione si apre solo con un tocco -->
 <dialog class="dialog small" id="saveDialog" aria-labelledby="saveDialogTitle">
   <form method="dialog">
@@ -1008,7 +994,7 @@ function clearLegacy() {
 // l'ultimo file dei progressi, le foto mandate in chat e le voci del diario scritte al bot; Salva rimanda il file
 // nella chat. Fuori da Telegram non cambia niente. Il bot (cartella telegram/) serve anche questa pagina, quindi
 // le parla sullo stesso indirizzo (api/…). Telegram passa i dati firmati dell'utente nell'indirizzo (#tgWebAppData):
-// con quelli e la password (tgLogin) il bot dà una sessione breve e la chiave del file, tenute solo in memoria.
+// con quelli (tgLogin) il bot dà una sessione breve e la chiave del file, tenute solo in memoria.
 const TG = (() => {
   try {
     const initData = new URLSearchParams(location.hash.slice(1)).get("tgWebAppData");
@@ -4452,7 +4438,7 @@ function openSettings(first = false) {
         `<label class="switch"><span>Stima la definizione muscolare<small>Ombre fra i muscoli di petto, addome e schiena. Spegnila se fai le foto con la maglietta.</small></span><input type="checkbox" id="defInput" ${draft.definition ? "checked" : ""}></label>`)}
       ${sec("data", "I tuoi progressi", dirty ? "Da salvare" : "Salvati nel file", `
         <p class="note">${TG
-          ? "Sei dentro Telegram: Salva manda il file dei progressi nella chat col bot, cifrato, con tutte le foto (ridotte). Si apre solo da qui, con la tua password. Riaprendo la pagina dalla chat, anche da un altro telefono, riparti da lì."
+          ? "Sei dentro Telegram: Salva manda il file dei progressi nella chat col bot, cifrato, con tutte le foto (ridotte). Si apre solo da qui. Ogni salvataggio sparisce dalla chat dopo 4 ore, tranne l'ultimo e quelli che conservi (pulsante Conserva). Riaprendo la pagina dalla chat, anche da un altro telefono, riparti da lì."
           : "Il browser non tiene niente: punti, misure, diario e impostazioni restano solo nel file dei progressi. Salvalo prima di chiudere la pagina, e la prossima volta caricalo. Nel file ci sono anche le foto tenute (riferimenti, partenza e Dopo); le altre no: quando apri il file, aggiungile di nuovo e i punti tornano."}</p>
         <p class="note" id="keptLine">Foto tenute: …</p>
         <div class="data-actions">
@@ -4462,7 +4448,7 @@ function openSettings(first = false) {
         <p class="note">${esc(lastExportText())}${MOBILE && !TG ? " Su iPhone salvalo in File › Sul mio iPhone: in iCloud Drive finirebbe online." : ""}</p>`)}
       ${TG
         ? sec("privacy", "Privacy", "Chat col bot",
-          `<p class="note">Su Telegram foto e file dei progressi stanno nella tua chat col bot, sui server di Telegram. Le foto che mandi in chat non sono cifrate (le chat coi bot non lo sono): quando salvi, il bot toglie quelle già prese (se sono di meno di 48 ore fa) e restano solo nel file dei progressi, che è cifrato qui sul telefono e si apre solo con la tua password. Le foto si analizzano qui e qui non si salva niente.</p>`)
+          `<p class="note">Su Telegram foto e file dei progressi stanno nella tua chat col bot, sui server di Telegram. Le foto che mandi in chat non sono cifrate (le chat coi bot non lo sono): quando salvi, il bot toglie quelle già prese (se sono di meno di 48 ore fa) e restano solo nel file dei progressi, che è cifrato qui sul telefono e si apre solo da qui. Le foto si analizzano qui e qui non si salva niente.</p>`)
         : sec("privacy", "Privacy", "Niente esce, niente resta",
           `<p class="note">Le foto non lasciano mai questo dispositivo: si aprono e si analizzano qui. Il browser non tiene niente: chiudendo la pagina sparisce tutto, resta solo il file dei progressi che salvi tu. Niente account, cookie, statistiche o tracciamento. La pagina è bloccata dal browser e non può collegarsi ad altri siti${location.protocol === "file:" ? ", tranne i due da cui scarica le librerie" : ""}.</p>`)}`;
     dlg.querySelectorAll("[data-acc]").forEach((d) => d.addEventListener("toggle", () => { if (d.open) open.add(d.dataset.acc); else open.delete(d.dataset.acc); }));
@@ -4851,90 +4837,34 @@ async function migrateLegacy() {
 // ------------------------------------------------------------------ Telegram: la chat col bot (vedi TG, in cima)
 
 const b64url = (s) => btoa(String.fromCharCode(...new TextEncoder().encode(s))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-const bytesB64u = (b) => { let s = ""; for (const x of new Uint8Array(b)) s += String.fromCharCode(x); return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); };
 const b64uBytes = (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
 
-// Il bot risponde sullo stesso indirizzo della pagina. Per entrare servono i dati firmati da Telegram e la password
-// (tgLogin): il bot dà una sessione breve e la chiave del file dei progressi, che restano solo in memoria.
-// Sessione scaduta (2 ore senza usarla, 12 in tutto): si richiede la password e si riprova, il lavoro non si perde
+// Il bot risponde sullo stesso indirizzo della pagina. Coi dati firmati da Telegram (e l'accesso: il codice
+// d'accesso scritto al bot) dà una sessione breve e la chiave del file dei progressi, tenute solo in memoria.
+// Sessione scaduta (2 ore senza usarla, 12 in tutto): se ne chiede un'altra e si riprova, il lavoro non si perde
 async function tgApi(path, opts = {}, retry = true) {
   if (!TG.session) await tgLogin();
   const res = await fetch(`api/${path}`, { ...opts, credentials: "omit", headers: { Authorization: `Bearer ${TG.session}`, ...opts.headers } });
   if (res.status === 401 && retry) {
     TG.session = null;
-    await tgLogin("La sessione è scaduta: rimetti la password. Quello che stavi facendo resta.");
     return tgApi(path, opts, false);
   }
   if (!res.ok) throw new Error(`api ${res.status}`);
   return res;
 }
-
-// Password: la prima volta la scegli, poi la rimetti a ogni apertura. Qui si passa per PBKDF2 (lento apposta,
-// col sale che dà il bot): al bot arriva solo il risultato, la password non esce dal telefono.
-// 5 sbagliate di fila: bloccata 15 minuti, poi sempre di più
-const PW_MIN = 10;
 let loginWait = null;
-function tgLogin(note = "") {
+function tgLogin() {
   loginWait ??= (async () => {
-    try { return await loginLoop(note); } finally { loginWait = null; }
+    try {
+      const res = await fetch("api/login", { method: "POST", credentials: "omit", headers: { Authorization: `tma ${TG.initData}` } });
+      if (!res.ok) throw new Error(res.status === 403 ? "invite" : res.status === 429 ? "limit" : "auth");
+      const r = await res.json();
+      TG.session = r.token;
+      TG.fileKey = await crypto.subtle.importKey("raw", b64uBytes(r.fileKey), "AES-GCM", false, ["encrypt", "decrypt"]);
+      TG.keyId = b64uBytes(r.keyId);
+    } finally { loginWait = null; }
   })();
   return loginWait;
-}
-async function loginLoop(note) {
-  const auth = { Authorization: `tma ${TG.initData}` };
-  const info = await fetch("api/login", { credentials: "omit", headers: auth });
-  if (!info.ok) throw new Error(info.status === 429 ? "limit" : "auth");
-  const meta = await info.json();
-  const { set, salt, iterations } = meta;
-  let lockedUntil = meta.lockedUntil || 0;
-  const dlg = $("#pwDialog");
-  $("#pwTitle").textContent = set ? "Password" : "Scegli una password";
-  $("#pwIntro").textContent = note || (set
-    ? "Per aprire i tuoi progressi. Il file nella chat è cifrato: senza password non si apre."
-    : `Serve ad aprire i tuoi progressi da qui: anche chi entrasse nel tuo Telegram, senza password non li vede. Almeno ${PW_MIN} caratteri. Se la dimentichi non si recupera: tienila nel gestore delle password.`);
-  $("#pwAgainRow").hidden = set;
-  $("#pwInput").autocomplete = set ? "current-password" : "new-password";
-  $("#pwInput").value = $("#pwAgain").value = "";
-  // Bloccata: lo dice (e non tocca gli altri messaggi se non lo è)
-  const showLock = () => { if (lockedUntil > Date.now()) $("#pwError").textContent = `Troppi tentativi: riprova dopo le ${new Date(lockedUntil).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}.`; };
-  $("#pwError").textContent = "";
-  showLock();
-  if (!dlg.open) dlg.showModal();
-  $("#pwInput").focus();
-  for (;;) {
-    await new Promise((resolve) => { $("#pwForm").onsubmit = (e) => { e.preventDefault(); resolve(); }; });
-    const pw = $("#pwInput").value;
-    if (lockedUntil > Date.now()) { showLock(); continue; }
-    if (!set && pw.length < PW_MIN) { $("#pwError").textContent = `Almeno ${PW_MIN} caratteri.`; continue; }
-    if (!set && pw !== $("#pwAgain").value) { $("#pwError").textContent = "Le due password non sono uguali."; continue; }
-    $("#pwOk").disabled = true;
-    $("#pwError").textContent = "Controllo…";
-    try {
-      const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw.normalize("NFC")), "PBKDF2", false, ["deriveBits"]);
-      const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: b64uBytes(salt), iterations }, base, 256);
-      const res = await fetch("api/login", { method: "POST", credentials: "omit", headers: { ...auth, "Content-Type": "application/json" }, body: JSON.stringify({ key: bytesB64u(bits), create: !set }) });
-      const r = await res.json().catch(() => ({}));
-      if (res.ok && r.token) {
-        TG.session = r.token;
-        TG.fileKey = await crypto.subtle.importKey("raw", b64uBytes(r.fileKey), "AES-GCM", false, ["encrypt", "decrypt"]);
-        TG.keyId = b64uBytes(r.keyId);
-        $("#pwInput").value = $("#pwAgain").value = "";
-        dlg.close();
-        return;
-      }
-      if (r.error === "password") {
-        lockedUntil = r.lockedUntil || 0;
-        if (lockedUntil) showLock();
-        else $("#pwError").textContent = `Password sbagliata. ${r.left === 1 ? "Ancora 1 tentativo" : `Ancora ${r.left} tentativi`}, poi si blocca per un po'.`;
-      } else if (r.error === "locked") { lockedUntil = r.lockedUntil; showLock(); }
-      else if (res.status === 401) { $("#pwError").textContent = "Riapri la pagina dal pulsante nella chat."; }
-      else $("#pwError").textContent = "Non riesco a parlare col bot. Riprova fra poco.";
-    } catch {
-      $("#pwError").textContent = "Non riesco a parlare col bot. Riprova fra poco.";
-    } finally {
-      $("#pwOk").disabled = false;
-    }
-  }
 }
 
 // File dei progressi nella chat: cifrato qui con AES-GCM (FPE1 · id della chiave · iv · dati), il bot lo vede
@@ -4968,7 +4898,7 @@ function poseFromCaption(c) {
 }
 const isoLocal = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 
-// All'apertura: script di Telegram (pronto, a tutto schermo), password, poi i progressi della chat
+// All'apertura: script di Telegram (pronto, a tutto schermo), accesso, poi i progressi della chat
 async function tgStart() {
   const wa = await new Promise((resolve) => {
     const s = document.createElement("script");
@@ -4983,7 +4913,8 @@ async function tgStart() {
     if (wa.initData) TG.initData = wa.initData;
   }
   try { await tgLogin(); } catch (e) {
-    toast(e.message === "limit" ? "Oggi il bot ha già lavorato troppo per te: riprova domani." : "Apri la pagina dal pulsante nella chat col bot.");
+    toast(e.message === "invite" ? "Prima scrivi al bot il codice d'accesso, poi riapri la pagina dalla chat."
+      : e.message === "limit" ? "Oggi il bot ha già lavorato troppo per te: riprova domani." : "Apri la pagina dal pulsante nella chat col bot.");
     return;
   }
   await tgSync();
@@ -5453,8 +5384,6 @@ window.addEventListener("drop", (e) => {
 if (MOBILE) $("#accAnalysis").open = false;
 // Dentro Telegram le foto passano dalla chat col bot: i testi che dicono il contrario cambiano
 if (TG) {
-  $("#pwDialog").addEventListener("cancel", (e) => e.preventDefault()); // senza password non si va avanti
-  $("#pwError").textContent = "";
   $(".busy-note").textContent = "Le foto passano dalla tua chat col bot di Telegram.";
   $(".drop p").textContent = "JPG, PNG, HEIC e screenshot. Oppure mandale al bot nella chat: le trovi qui.";
 }

@@ -13,9 +13,9 @@ binding = "DB"
 database_name = "fitprogress"
 database_id = "88b853b6-37f5-4f27-9fda-d40b473da3bf" # da: npx wrangler d1 create fitprogress
 
-# Promemoria: ogni ora si mandano quelli in scadenza
+# Ogni 15 minuti: promemoria in scadenza, salvataggi non conservati da togliere, pulizia
 [triggers]
-crons = ["0 * * * *"]
+crons = ["*/15 * * * *"]
 
 [vars]
 TIME_ZONE = "Europe/Rome"
@@ -25,5 +25,6 @@ TIME_ZONE = "Europe/Rome"
 #   WEBHOOK_SECRET  codice a caso (openssl rand -hex 32): solo Telegram lo conosce
 #   MASTER_KEY      chiave principale, 64 cifre esadecimali (openssl rand -hex 32): da conservare, senza non si
 #                   riapre più nessun file dei progressi
-#   ALLOWED_IDS     ID Telegram ammessi, separati da virgole, oppure * per tutti. Vuoto: nessuno (a /start il bot
-#                   dice l'ID). È un secret perché così non sta nel repository e non cambia a ogni deploy
+#   ALLOWED_IDS     ID Telegram ammessi sempre (il tuo), separati da virgole, oppure * per tutti. È un secret
+#                   perché così non sta nel repository e non cambia a ogni deploy
+#   ACCESS_CODE     codice d'accesso da dare ai tester: lo scrivono una volta al bot e sono dentro

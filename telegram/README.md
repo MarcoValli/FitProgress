@@ -6,7 +6,8 @@ Facoltativo: FitProgress funziona anche senza. Con il bot:
 - **Diario in chat.** `82,4` · `grasso 18` · `vita 84` · `gambe 60 min` · `allenamento: spinta` · `cena ieri: pizza`. Se il bot non capisce, chiede coi pulsanti. Le voci entrano nel diario della pagina alla prossima apertura.
 - **Promemoria.** Ogni 14 giorni alle 8 (ora italiana) ti ricorda le foto, coi numeri della foto di riferimento. I pulsanti sono Fatto, Domani e Pausa. Si cambia con `/ogni 7`, `/ora 19`, `/pausa`, `/riprendi`. Una foto mandata conta come fatto.
 - **Altro telefono.** Riaprendo la pagina dalla chat riparti dall'ultimo file dei progressi. Per ripartire da un file vecchio lo inoltri al bot.
-- **Password.** La pagina dentro Telegram si apre con una password, scelta la prima volta. Il file dei progressi nella chat è cifrato sul telefono e si apre solo così.
+- **Su invito.** Chi non è in `ALLOWED_IDS` scrive una volta al bot il codice d'accesso (`ACCESS_CODE`): il bot toglie il messaggio col codice e da lì si è dentro, anche nella pagina. Il file dei progressi nella chat è cifrato sul telefono e si apre solo dalla pagina aperta dal bot.
+- **Storico.** Ogni salvataggio arriva nella chat col pulsante **📌 Conserva**. Quelli non conservati spariscono dopo 4 ore, tranne l'ultimo (è quello da cui riparte la pagina). Telegram lascia togliere i messaggi solo entro 48 ore.
 - `/cancella` toglie tutto quello che il bot sa di te.
 
 ## Come è fatto
@@ -14,12 +15,12 @@ Facoltativo: FitProgress funziona anche senza. Con il bot:
 Un Cloudflare Worker (`src/worker.js`) con un database D1 (`schema.sql`).
 
 - Serve anche la pagina: `npm run build` copia `index.html` e `vendor/` in `public/`. Così la pagina parla col bot sullo stesso indirizzo e la CSP non cambia.
-- Nel database ci sono le impostazioni del promemoria, l'identificativo dell'ultimo file dei progressi nella chat, l'impronta della password, le sessioni (solo impronte) e, per 7 giorni, le foto e le voci del diario non ancora prese dalla pagina (testi cifrati). Le foto e i file stanno su Telegram.
+- Nel database ci sono chi è stato ammesso, le impostazioni del promemoria, l'identificativo dell'ultimo file dei progressi nella chat, i salvataggi mandati in chat (per toglierli), le sessioni (solo impronte) e, per 7 giorni, le foto e le voci del diario non ancora prese dalla pagina (testi cifrati). Le foto e i file stanno su Telegram.
 - **Da Telegram**: i messaggi arrivano solo col codice segreto del webhook (`WEBHOOK_SECRET`).
-- **Dalla pagina**: per entrare servono i dati firmati da Telegram e la password (passata per PBKDF2 sul telefono, 600.000 giri; nel database solo un HMAC). Poi una sessione che scade dopo 2 ore senza usarla, 12 in tutto. Cinque password sbagliate bloccano per 15 minuti, poi sempre di più. Ognuno può chiedere solo le sue foto.
-- **Cifratura**: da `MASTER_KEY` il Worker ricava per ogni utente la chiave del file (data alla pagina dopo la password: il file la pagina lo cifra e lo decifra da sola) e quella dei testi in attesa nel database. Il Worker rifiuta file non cifrati con la chiave di chi salva.
-- **Limiti al giorno**: 300 messaggi, 40 foto, 60 salvataggi, 3000 richieste per utente; 30 utenti nuovi in tutto. `/setup` funziona una volta sola.
-- **Chi può usarlo**: il secret `ALLOWED_IDS` contiene gli ID Telegram ammessi, oppure `*` per tutti. Vuoto vuol dire nessuno: a `/start` il bot ti dice il tuo ID.
+- **Dalla pagina**: coi dati firmati da Telegram (validi 12 ore), se l'utente è ammesso, il bot dà una sessione che scade dopo 2 ore senza usarla, 12 in tutto; la pagina la rifà da sola. Ognuno può chiedere solo le sue foto.
+- **Cifratura**: da `MASTER_KEY` il Worker ricava per ogni utente la chiave del file (data alla pagina dentro la sessione: il file la pagina lo cifra e lo decifra da sola) e quella dei testi in attesa nel database. Il Worker rifiuta file non cifrati con la chiave di chi salva.
+- **Limiti al giorno**: 300 messaggi, 40 foto, 60 salvataggi, 3000 richieste per utente; 5 tentativi col codice d'accesso; 30 utenti nuovi in tutto. `/setup` funziona una volta sola.
+- **Chi può usarlo**: chi ha scritto il codice d'accesso, più gli ID nel secret `ALLOWED_IDS` (sempre dentro; `*` per tutti).
 
 **Privacy:** le chat coi bot non sono cifrate end-to-end. Foto e file dei progressi stanno sui server di Telegram e passano dal Worker (senza restarci). Il file dei progressi nella chat è cifrato. Nel browser di Telegram la pagina non salva niente: a ogni apertura riparte dall'ultimo file della chat.
 
@@ -33,7 +34,7 @@ Serve Node 22. Tutto da questa cartella (`telegram/`).
    npm install
    npx wrangler login
    npx wrangler d1 create fitprogress   # copia database_id in wrangler.toml
-   npm run db:init                      # un database della prima versione: migrations/0002-sicurezza.sql
+   npm run db:init                      # un database delle versioni di prima: i file in migrations/, in ordine
    ```
 3. **Segreti.** Il token di BotFather, la chiave principale (da conservare: senza, nessun file dei progressi si riapre) e un codice inventato per il webhook:
    ```sh
@@ -42,12 +43,12 @@ Serve Node 22. Tutto da questa cartella (`telegram/`).
    tr -d '\n' < ~/fitprogress-chiave-principale.txt | npx wrangler secret put MASTER_KEY
    openssl rand -hex 32 | tee /dev/tty | npx wrangler secret put WEBHOOK_SECRET   # serve al punto 5
    ```
-4. **Pubblica.** `npm run deploy` risponde l'indirizzo, per esempio `https://fitprogress-bot.<tuo-account>.workers.dev`. Dopo il primo deploy: `npx wrangler secret put ALLOWED_IDS` (vuoto per ora).
+4. **Pubblica.** `npm run deploy` risponde l'indirizzo, per esempio `https://fitprogress-bot.<tuo-account>.workers.dev`. Dopo il primo deploy: `npx wrangler secret put ACCESS_CODE` (il codice per i tester) e `npx wrangler secret put ALLOWED_IDS` (vuoto per ora).
 5. **Collega il bot** (webhook, comandi, pulsante del menu). Funziona una volta sola: per rifarlo, `ALLOW_SETUP = "1"` fra le variabili, deploy, `/setup`, poi di nuovo via.
    ```sh
    curl -X POST https://fitprogress-bot.<tuo-account>.workers.dev/setup -H "X-Setup-Secret: <il codice del punto 3>"
    ```
-6. **Il tuo ID.** Scrivi `/start` al bot: ti risponde col tuo ID. Mettilo in `ALLOWED_IDS` con `npx wrangler secret put ALLOWED_IDS` (più ID separati da virgole, `*` per tutti).
+6. **Entra.** Scrivi al bot il codice d'accesso. Per esserci sempre, anche se cambi il codice: metti il tuo ID Telegram in `ALLOWED_IDS` (`npx wrangler secret put ALLOWED_IDS`).
 
 Ogni volta che cambia `index.html`: `npm run deploy` (rifà anche `public/`).
 

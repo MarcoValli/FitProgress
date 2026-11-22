@@ -13,10 +13,18 @@ CREATE TABLE IF NOT EXISTS users (
   guide TEXT,                              -- righe di "Come rifare la foto" per il promemoria (JSON)
   last_group TEXT,                         -- ultimo album di foto ricevuto (si risponde una volta sola)
   created_at INTEGER NOT NULL,
-  pw_salt TEXT,                            -- sale per la password (PBKDF2, sul telefono)
-  pw_verifier TEXT,                        -- HMAC(pepper, password passata per PBKDF2): la password non c'è
-  pw_fails INTEGER NOT NULL DEFAULT 0,     -- password sbagliate di fila
-  pw_locked_until INTEGER NOT NULL DEFAULT 0
+  admitted INTEGER NOT NULL DEFAULT 0,     -- 1: ha scritto il codice d'accesso
+  last_msg INTEGER                         -- il messaggio nella chat con l'ultimo file (non si toglie mai)
+);
+
+-- Salvataggi mandati nella chat: quelli non conservati (kept = 0) si tolgono dopo 4 ore, tranne l'ultimo
+CREATE TABLE IF NOT EXISTS saves (
+  user_id INTEGER NOT NULL,
+  message_id INTEGER NOT NULL,
+  file_id TEXT NOT NULL,
+  sent_at INTEGER NOT NULL,
+  kept INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, message_id)
 );
 
 -- Sessioni della pagina: solo l'impronta del codice, scadono dopo 2 ore senza usarle o 12 in tutto
@@ -28,7 +36,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 CREATE INDEX IF NOT EXISTS sessions_user ON sessions (user_id);
 
--- Quante azioni al giorno (limiti per utente; user_id 0: utenti nuovi in tutto)
+-- Quante azioni al giorno (limiti per utente, anche i tentativi col codice d'accesso; user_id 0: utenti nuovi in tutto)
 CREATE TABLE IF NOT EXISTS usage (
   user_id INTEGER NOT NULL,
   day TEXT NOT NULL,

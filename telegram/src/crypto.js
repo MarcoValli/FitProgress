@@ -1,9 +1,8 @@
 // Chiavi e cifratura del bot. Tutto parte da MASTER_KEY (secret di Cloudflare, 32 byte in esadecimale):
 // per ogni utente se ne ricavano (HKDF) chiavi diverse, una per scopo.
-//   file   cifra il file dei progressi nella chat. La ricava il Worker e la dà alla pagina solo dopo la password:
+//   file   cifra il file dei progressi nella chat. La ricava il Worker e la dà alla pagina solo dentro una sessione:
 //          la pagina cifra e decifra da sola, il Worker il file in chiaro non lo vede mai
 //   db     cifra quello che resta in attesa nel database (voci del diario, didascalie, guida del promemoria)
-//   pepper (una per tutti) rende inutile un furto del database per indovinare le password
 const enc = new TextEncoder(), dec = new TextDecoder();
 export const MAGIC = enc.encode("FPE1"); // file dei progressi cifrato: FPE1 · id della chiave (8) · iv (12) · dati
 export const HEADER = 4 + 8 + 12;
@@ -53,13 +52,6 @@ export async function openText(master, userId, s) {
     const b = fromB64u(s.slice(3));
     return dec.decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: b.slice(0, 12) }, await dbKey(master, userId), b.slice(12)));
   } catch { return null; }
-}
-
-// Password: la pagina la passa per PBKDF2 (lento, sul telefono) e manda solo il risultato (32 byte).
-// Qui si tiene HMAC(pepper, risultato): senza MASTER_KEY il database non serve a indovinarla
-export const PBKDF2_ITERATIONS = 600000;
-export async function verifier(master, stretched) {
-  return hexOf(await hmac(await derive(master, "pepper"), stretched));
 }
 
 // Sessione della pagina: un codice a caso, nel database solo la sua impronta
