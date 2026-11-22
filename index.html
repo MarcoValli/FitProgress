@@ -8,7 +8,7 @@
      Script: parte solo quello di questa pagina, riconosciuto dalla sua impronta SHA-256 (più le librerie
      controllate, come blob:, e lo script di Telegram, caricato solo dentro Telegram). Dopo ogni modifica allo
      script: node tools/csp-hash.mjs, se no la pagina non parte (a ogni push lo fa anche la GitHub Action). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-zsebZ87PiNHGQxsKuyoUYOz9cxI2Qu5jrh+BvfYGry4=' blob: 'wasm-unsafe-eval' https://telegram.org/js/telegram-web-app.js; connect-src 'self' blob: data: https://cdn.jsdelivr.net/npm/heic-to@1.6.7/dist/csp/heic-to.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/vision_bundle.mjs https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.wasm https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task https://fitprogress-bot.marco-valli.workers.dev/api/check; img-src 'self' blob: data:; style-src 'unsafe-inline'; worker-src 'self' blob:; manifest-src 'self'; base-uri 'none'; object-src 'none'; frame-src 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-qqHnO9ptow4wnNB2//ldVViU3Ca28pKro3jqrA8loGo=' blob: 'wasm-unsafe-eval' https://telegram.org/js/telegram-web-app.js; connect-src 'self' blob: data: https://cdn.jsdelivr.net/npm/heic-to@1.6.7/dist/csp/heic-to.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/vision_bundle.mjs https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.wasm https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task https://fitprogress-bot.marco-valli.workers.dev/api/check; img-src 'self' blob: data:; style-src 'unsafe-inline'; worker-src 'self' blob:; manifest-src 'self'; base-uri 'none'; object-src 'none'; frame-src 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -222,7 +222,15 @@
   .canvas-area { position: relative; min-width: 0; overflow: auto; display: flex; flex-direction: column; gap: 12px; align-items: center; justify-content: center; padding: 24px; background: radial-gradient(circle at 50% 0%, #17171c, var(--bg) 70%); }
   .frame { position: relative; display: inline-block; line-height: 0; border-radius: 8px; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,.5), 0 0 0 1px var(--border); }
   #editCanvas { display: block; max-width: 100%; max-height: calc(100vh - 56px - 48px); cursor: crosshair; touch-action: none; }
-  #compareCanvas { display: block; max-width: 100%; max-height: calc(100vh - 56px - 48px - 180px); touch-action: pan-y; }
+  #compareCanvas { display: block; max-width: 100%; max-height: calc(100vh - 56px - 48px - 230px); touch-action: pan-y; }
+  /* Confronta: quale posa, sopra la foto */
+  .cmp-top { width: 100%; max-width: 600px; }
+  .cmp-pose { grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px; }
+  .cmp-pose > span { color: var(--text); font-size: 13px; font-weight: 600; }
+  /* Libreria: quali pose mostrare, poi le foto divise per posa */
+  .lib-head { padding: 0 2px 6px; }
+  .lib-head .field { grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px; }
+  .group-title.unknown { color: var(--measure); }
   #compareCanvas.wipe { touch-action: none; }
   #compareCanvas.wipe { cursor: ew-resize; }
   .coach { position: absolute; z-index: 2; left: 50%; top: 12px; transform: translateX(-50%); max-width: calc(100% - 24px); padding: 8px 14px; border-radius: 999px; background: rgba(14, 14, 16, .82); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.1); line-height: 1.35; font-size: 13px; text-align: center; pointer-events: none; }
@@ -515,7 +523,9 @@
     #addBtn, #tipsBtn { width: 36px; padding: 0; }
     .brand { font-size: 14px; }
     .layout, .layout.is-empty { height: auto; display: flex; flex-direction: column; }
-    .sidebar { display: flex; align-items: stretch; gap: 6px; overflow-x: auto; overflow-y: hidden; padding: 8px 10px; border-right: 0; border-bottom: 1px solid var(--border); scroll-snap-type: x proximity; }
+    .sidebar { display: block; overflow: visible; padding: 8px 10px; border-right: 0; border-bottom: 1px solid var(--border); }
+    .lib-list { display: flex; align-items: stretch; gap: 6px; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x proximity; }
+    .lib-head { padding: 0 0 8px; max-width: 520px; }
     .group-title { flex: 0 0 auto; writing-mode: vertical-rl; transform: rotate(180deg); padding: 4px 2px; justify-content: center; gap: 6px; font-size: 10px; }
     .row { flex: 0 0 auto; scroll-snap-align: start; }
     .item { flex-direction: column; align-items: flex-start; width: 92px; padding: 5px; gap: 5px; }
@@ -528,8 +538,8 @@
     #guideCanvas { max-height: 62dvh; }
     /* Confronto: niente miniature sopra (le foto si scelgono dal cassetto); foto e comandi insieme nello schermo */
     .layout[data-view="compare"] .sidebar, .layout[data-view="guide"] .sidebar { display: none; }
-    #compareCanvas { max-height: max(280px, calc(100dvh - 330px)); }
-    .cmpbar { max-width: 520px; }
+    #compareCanvas { max-height: max(280px, calc(100dvh - 380px)); }
+    .cmpbar, .cmp-top { max-width: 520px; }
     .cmp-slot { min-height: 60px; }
     .cmp-tools .btn { width: 44px; height: 44px; }
     /* Il cassetto sale dal basso */
@@ -685,6 +695,9 @@
       <button type="button" class="btn primary" data-proxy="confirmBtn">Sono giusti</button>
     </div>
 
+    <div class="cmp-top" id="compareTop" hidden>
+      <label class="field cmp-pose"><span>Confronta</span><select class="input" id="comparePose"></select></label>
+    </div>
     <div class="frame" id="compareFrame" hidden><canvas id="compareCanvas"></canvas></div>
     <!-- Sotto il confronto: quali foto, come vederle -->
     <div class="cmpbar" id="compareBar" hidden>
@@ -1312,7 +1325,7 @@ const MOBILE = matchMedia("(pointer: coarse)").matches && Math.min(screen.width,
 const MAX_SIDE = MOBILE ? 1280 : 1600;
 
 // picked: pose per cui in questa sessione hai già scelto i punti; picking: posa di cui stai cambiando i punti
-const state = { photos: [], selected: null, mode: "align", view: "prepare", cmode: "wipe", wipe: 50, fade: 50, comparePose: "front", thirds: {}, refKeys: new Set(), keptKeys: new Set(), askStart: false, guidePose: "front", picked: new Set(), picking: null, logMetric: "weight" };
+const state = { photos: [], selected: null, mode: "align", view: "prepare", cmode: "wipe", wipe: 50, fade: 50, comparePose: "front", thirds: {}, refKeys: new Set(), keptKeys: new Set(), askStart: false, guidePose: "front", libPose: "all", picked: new Set(), picking: null, logMetric: "weight" };
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fmtDate = (d) => d ? d.split("-").reverse().join("/") : "";
@@ -3290,29 +3303,59 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
+// Posa non riconosciuta: la persona non si è trovata nella foto (e la posa non l'hai scelta tu). Resta "di fronte"
+// finché non la scegli, ma nella libreria sta a parte
+const poseUnknown = (p) => p.poseSet !== "user" && !p.align.length && Array.isArray(p.lm) && !p.lm.length;
+// Gruppi della libreria: le tre pose, poi le foto con la posa da scegliere
+function libGroups() {
+  const groups = POSE_KEYS.map((k) => ({ k, label: POSES[k].label, list: state.photos.filter((p) => p.pose === k && !poseUnknown(p)).sort(byDate) }));
+  groups.push({ k: "unknown", label: "Posa da scegliere", list: state.photos.filter(poseUnknown).sort(byDate) });
+  return groups.filter((g) => g.list.length);
+}
 function renderSidebar() {
   const bar = $("#sidebar");
   bar.innerHTML = "";
-  for (const k of POSE_KEYS) {
-    const group = state.photos.filter((p) => p.pose === k).sort(byDate);
-    if (!group.length) continue;
+  const groups = libGroups();
+  if (!groups.some((g) => g.k === state.libPose)) state.libPose = "all";
+  // Quali pose mostrare: tutte (divise per posa) o una sola. Con una sola posa il menu non serve
+  if (groups.length > 1) {
     const head = document.createElement("div");
-    head.className = "group-title";
-    head.innerHTML = `<span>${POSES[k].label}</span><span>${group.length}</span>`;
+    head.className = "lib-head";
+    head.innerHTML = `<label class="field"><span class="section-title">Mostra</span><select class="input" id="libPose">`
+      + `<option value="all">Tutte le pose · ${state.photos.length}</option>`
+      + groups.map((g) => `<option value="${g.k}" ${g.k === state.libPose ? "selected" : ""}>${g.label} · ${g.list.length}</option>`).join("")
+      + `</select></label>`;
     bar.append(head);
-    for (const p of group) {
+    head.querySelector("select").addEventListener("change", (e) => { state.libPose = e.target.value; renderSidebar(); });
+  }
+  const list = document.createElement("div");
+  list.className = "lib-list";
+  bar.append(list);
+  for (const g of groups) {
+    if (state.libPose !== "all" && g.k !== state.libPose) continue;
+    const head = document.createElement("div");
+    head.className = `group-title${g.k === "unknown" ? " unknown" : ""}`;
+    head.innerHTML = `<span>${g.label}</span><span>${g.list.length}</span>`;
+    if (g.k === "unknown") head.title = "Non ho trovato la persona: apri la foto e scegli la posa in Data e posa";
+    list.append(head);
+    for (const p of g.list) {
       const row = document.createElement("div");
       row.className = "row";
       const item = document.createElement("button");
       item.className = "item";
       item.setAttribute("aria-current", p === state.selected && state.view === "prepare");
-      const status = !p.M ? (p.lm || p.align.length ? '<span class="pill">Da allineare</span>' : '<span class="pill">Riconosco la posa…</span>')
+      const status = poseUnknown(p) ? '<span class="pill yellow">Scegli la posa</span>'
+        : !p.M ? (p.lm || p.align.length ? '<span class="pill">Da allineare</span>' : '<span class="pill">Riconosco la posa…</span>')
         : p.auto ? (!p.auto.sure && settings.detect !== "auto" ? '<span class="pill yellow">Da controllare</span>' : '<span class="pill blue"><svg class="icon"><use href="#i-sparkle"/></svg>Allineata</span>')
         : measureComplete(p) ? '<span class="pill green">Con misure</span>' : '<span class="pill blue">Allineata</span>';
       const pill = `<span class="pills">${roleOf(p) === "start" ? '<span class="pill accent"><svg class="icon"><use href="#i-flag"/></svg>Partenza</span>' : ""}${p.ref ? '<span class="pill accent"><svg class="icon"><use href="#i-star"/></svg>Riferimento</span>' : ""}${status}</span>`;
       item.innerHTML = `<img alt="" src="${p.thumb}"><span class="txt"><span class="date">${p.date ? fmtDate(p.date) : "Senza data"}</span>`
         + `<span class="name">${esc(p.name)}</span><span>${pill}</span></span>`;
-      item.addEventListener("click", () => { state.selected = p; state.view = "prepare"; refresh(); });
+      item.addEventListener("click", () => {
+        state.selected = p; state.view = "prepare";
+        if (poseUnknown(p)) $("#accPhoto").open = true; // la posa si sceglie lì
+        refresh();
+      });
       const remove = document.createElement("button");
       remove.className = "remove";
       remove.innerHTML = '<svg class="icon"><use href="#i-x"/></svg>';
@@ -3324,7 +3367,7 @@ function renderSidebar() {
         refresh();
       });
       row.append(item, remove);
-      bar.append(row);
+      list.append(row);
     }
   }
 }
@@ -3457,6 +3500,11 @@ function fillCompareControls() {
     b.querySelector("b").textContent = p ? (p.date ? fmtDate(p.date).replace(/\/20(\d\d)$/, "/$1") : p.name) : "Scegli";
     b.setAttribute("aria-label", `${slot === "A" ? "Prima" : "Dopo"}: ${p ? labelOf(p) : "nessuna"}. Cambia foto`);
   }
+  // Quale posa: quelle con almeno 2 foto pronte si scelgono, le altre dicono cosa manca
+  $("#comparePose").innerHTML = POSE_KEYS.map((k) => {
+    const n = readyFor(k).length;
+    return `<option value="${k}" ${k === state.comparePose ? "selected" : ""} ${n < 2 ? "disabled" : ""}>${POSES[k].label} · ${n >= 2 ? `${n} foto` : n ? "1 foto, ne serve un'altra" : "nessuna foto pronta"}</option>`;
+  }).join("");
   document.querySelectorAll("[data-cmode]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.cmode === state.cmode));
   $("#valueGroup").style.visibility = state.cmode === "side" || state.cmode === "diff" ? "hidden" : "";
   $("#valueLabel").textContent = state.cmode === "wipe" ? "Cursore" : "Prima";
@@ -3477,10 +3525,10 @@ function openSheet(slot) {
   sheet.querySelector(`.sheet-item[aria-pressed="true"]`)?.scrollIntoView({ block: "nearest" });
 }
 function renderSheet() {
-  const poses = POSE_KEYS.filter((k) => readyFor(k).length >= 2);
   $("#sheetTitle").textContent = sheetSlot === "A" ? "Scegli la foto Prima" : "Scegli la foto Dopo";
-  $("#sheetPoses").hidden = poses.length < 2;
-  $("#sheetPoses").innerHTML = poses.map((k) => `<button type="button" role="tab" data-spose="${k}" aria-selected="${k === sheetPose}">${POSES[k].label} <small>${readyFor(k).length}</small></button>`).join("");
+  // La posa si sceglie in alto, nel confronto: qui solo le sue foto
+  $("#sheetPoses").hidden = true;
+  $("#sheetTitle").textContent += ` · ${POSES[sheetPose].label.toLowerCase()}`;
   const mine = sheetPose === state.comparePose ? state[`sel${sheetSlot}`] : null;
   const other = sheetPose === state.comparePose ? state[`sel${sheetSlot === "A" ? "B" : "A"}`] : null;
   // Dalla più recente: di solito si cerca l'ultima foto
@@ -3496,7 +3544,6 @@ function renderSheet() {
       + `<span class="sheet-date">${esc(p.date ? fmtDate(p.date) : "Senza data")}${p === start ? ' <span class="pill accent">Partenza</span>' : ""}</span></button>`;
   }).join("")}</div>`;
   $("#sheetStart")?.addEventListener("click", () => { sheet.close(); openStart([sheetPose], true); });
-  $("#sheetPoses").querySelectorAll("[data-spose]").forEach((b) => b.addEventListener("click", () => { sheetPose = b.dataset.spose; renderSheet(); }));
   $("#sheetGrid").querySelectorAll("[data-key]").forEach((b) => b.addEventListener("click", () => pickCompare(b.dataset.key)));
 }
 function pickCompare(key) {
@@ -3517,6 +3564,8 @@ function pickCompare(key) {
   refresh();
 }
 document.querySelectorAll(".cmp-slot").forEach((b) => b.addEventListener("click", () => openSheet(b.dataset.slot)));
+// Altra posa: Prima e Dopo ripartono da quelli di base della posa (partenza e Dopo, se no la prima e l'ultima)
+$("#comparePose").addEventListener("change", (e) => { state.comparePose = e.target.value; state.selA = state.selB = null; refresh(); });
 $("#sheetClose").addEventListener("click", () => sheet.close());
 sheet.addEventListener("click", (e) => { if (e.target === sheet) sheet.close(); }); // tocco fuori dal cassetto
 $("#swapBtn").addEventListener("click", () => { [state.selA, state.selB] = [state.selB, state.selA]; refresh(); });
@@ -5295,7 +5344,7 @@ function cleanDiary(v) {
     }
     for (const id of DIARY_TEXT_IDS) if (typeof e[id] === "string" && e[id].trim()) out[id] = e[id].trim().slice(0, DIARY_TEXT[id].max);
     if (typeof e.note === "string" && e.note.trim()) out.note = e.note.trim().slice(0, 200);
-    if (hasDiaryData(out)) byDate.set(e.date, out);
+    if (hasDiaryData(out) || out.note) byDate.set(e.date, out); // anche solo una nota (dal bot)
   }
   return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)).slice(-DIARY_MAX);
 }
@@ -5326,7 +5375,7 @@ function mergeDiary(items) {
       const v = +value, f = DIARY_FIELDS[field];
       if (!(v >= f.min && v <= f.max)) continue;
       e[field] = Math.round(v * 10) / 10;
-    } else if (DIARY_TEXT[field] && typeof value === "string" && value.trim()) {
+    } else if ((DIARY_TEXT[field] || field === "note") && typeof value === "string" && value.trim()) {
       const t = value.trim();
       if (!(e[field] || "").includes(t)) e[field] = e[field] ? `${e[field]} · ${t}` : t;
     } else continue;
@@ -5591,6 +5640,7 @@ function refresh() {
   $("#howAlign").textContent = settings.detect === "auto" ? "Posa, punti e misure li trovo io." : "Una foto a mano, le altre in automatico.";
   $("#compareFrame").hidden = !has || state.view !== "compare";
   $("#compareBar").hidden = $("#compareFrame").hidden;
+  $("#compareTop").hidden = $("#compareFrame").hidden;
   $("#layout").dataset.view = state.view;
   $("#guideFrame").hidden = !has || state.view !== "guide";
   $("#prepareInspector").hidden = state.view !== "prepare";
