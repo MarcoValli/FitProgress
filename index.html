@@ -7,7 +7,7 @@
      Script: parte solo quello di questa pagina, riconosciuto dalla sua impronta SHA-256 (più le librerie
      controllate, come blob:, e lo script di Telegram, caricato solo dentro Telegram). Dopo ogni modifica allo
      script: node tools/csp-hash.mjs, se no la pagina non parte (a ogni push lo fa anche la GitHub Action). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-vlRiaCo41WKs6ZEGNzUIiLWKR9ZL8y2N/p7ONIso83s=' blob: 'wasm-unsafe-eval' https://telegram.org/js/telegram-web-app.js; connect-src 'self' blob: data: https://cdn.jsdelivr.net/npm/heic-to@1.6.7/dist/csp/heic-to.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/vision_bundle.mjs https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.wasm https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task; img-src 'self' blob: data:; style-src 'unsafe-inline'; worker-src 'self' blob:; manifest-src 'self'; base-uri 'none'; object-src 'none'; frame-src 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-6gfzNBD5x8SN8py5vMVikcplQN0SjH7jvK2Z1tIDTIQ=' blob: 'wasm-unsafe-eval' https://telegram.org/js/telegram-web-app.js; connect-src 'self' blob: data: https://cdn.jsdelivr.net/npm/heic-to@1.6.7/dist/csp/heic-to.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/vision_bundle.mjs https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.wasm https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task; img-src 'self' blob: data:; style-src 'unsafe-inline'; worker-src 'self' blob:; manifest-src 'self'; base-uri 'none'; object-src 'none'; frame-src 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -144,7 +144,21 @@
   #edCanvas.dragging { cursor: grabbing; }
   .ed-fade { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 0 16px 8px; color: var(--muted); font-size: 12px; font-weight: 600; }
   .ed-panel { display: grid; gap: 8px; min-height: 92px; padding: 10px 16px; border-top: 1px solid var(--border); align-content: center; }
-  .ed-panel .slider { grid-template-columns: 86px minmax(0, 1fr) 52px; }
+  /* Una riga per valore: etichetta, −, cursore, +, numero da scrivere */
+  .ed-ctl { display: grid; grid-template-columns: 80px 32px minmax(0, 1fr) 32px 74px; align-items: center; gap: 6px; }
+  .ed-lbl { color: var(--muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ed-step { font-size: 18px; font-weight: 600; line-height: 1; color: var(--text); touch-action: none; }
+  .ed-num { position: relative; display: block; }
+  .ed-num .input { height: 32px; padding: 0 22px 0 8px; text-align: right; font-variant-numeric: tabular-nums; }
+  .ed-num i { position: absolute; right: 7px; top: 50%; transform: translateY(-50%); color: var(--faint); font-size: 11px; font-style: normal; pointer-events: none; }
+  @media (max-width: 860px) {
+    /* Telefono: il nome dello strumento è già nella barra; con un valore solo l'etichetta non serve */
+    .ed-ctl { grid-template-columns: 56px 36px minmax(0, 1fr) 36px 68px; gap: 4px; }
+    .ed-ctl.single { grid-template-columns: 36px minmax(0, 1fr) 36px 68px; }
+    .ed-ctl.single .ed-lbl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    .ed-step { width: 36px; height: 36px; }
+    .ed-num .input { height: 36px; font-size: 16px; }
+  }
   .ed-panel .ed-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .ed-panel .note { margin: 0; }
   .ed-tools { display: flex; padding: 4px 6px max(4px, env(safe-area-inset-bottom)); border-top: 1px solid var(--border); background: var(--bg); }
@@ -746,8 +760,8 @@
             <button class="btn" id="flipBtn" aria-pressed="false"><svg class="icon"><use href="#i-flip"/></svg>Specchia</button>
             <button class="btn ghost" id="resetAdjust">Ripristina</button>
           </div>
-          <label class="slider"><span>Luce</span><input type="range" id="brightInput" min="-50" max="50" value="0"><output id="brightOut">0</output></label>
-          <label class="slider"><span>Contrasto</span><input type="range" id="contrastInput" min="-50" max="50" value="0"><output id="contrastOut">0</output></label>
+          <label class="slider"><span>Luce</span><input type="range" id="brightInput" min="-100" max="100" value="0"><output id="brightOut">0</output></label>
+          <label class="slider"><span>Contrasto</span><input type="range" id="contrastInput" min="-90" max="100" value="0"><output id="contrastOut">0</output></label>
         </div>
       </details>
 
@@ -1880,6 +1894,12 @@ const firstTwo = (p) => {
 
 // Ritocco a mano dopo l'allineamento: dimensione, rotazione e spostamento intorno al centro dei punti
 const NO_TWEAK = { s: 0, r: 0, x: 0, y: 0 }; // s in %, r in gradi, x/y in px della tela del confronto
+// Limiti larghi: servono solo a non perdere la foto (fuori dalla tela, grande come un francobollo o 4 volte la tela).
+// Sposta: due volte la tela in ogni direzione; dimensione da un quinto a 4 volte; rotazione completa
+const TWEAK_RANGE = { x: [-1200, 1200], y: [-1600, 1600], s: [-80, 300], r: [-180, 180] };
+// Luce e contrasto: a -100 di contrasto la foto diventa tutta grigia, quindi si ferma prima
+const ADJUST_RANGE = { bright: [-100, 100], contrast: [-90, 100] };
+const clampTo = (v, [a, b]) => Math.max(a, Math.min(b, v));
 const hasTweak = (p) => !!p.tweak && Object.values(p.tweak).some((v) => v);
 function withTweak(M, p) {
   if (!hasTweak(p)) return M;
@@ -3728,7 +3748,6 @@ $("#valueInput").addEventListener("input", (e) => {
 // ---- ritocco a mano
 state.tweakSide = "B";
 const tweakTarget = () => state.photos.find((p) => p.key === (state.tweakSide === "A" ? state.selA : state.selB));
-const tweakText = { s: (v) => `${signed(v, v % 1 ? 1 : 0)}%`, r: (v) => `${signed(v, v % 1 ? 2 : 0).replace(/,?0+$/, "")}°`, x: (v) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v)}`, y: (v) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v)}` };
 function fillTweak() {
   const pair = [state.selA, state.selB].map((k) => state.photos.find((q) => q.key === k)).filter(Boolean);
   const tw = pair.filter((q) => hasTweak(q) || q.bright || q.contrast).length;
@@ -3739,8 +3758,7 @@ let tweakTimer = 0;
 function setTweak(key, value, live) {
   const p = tweakTarget();
   if (!p) return;
-  const limits = { s: 15, r: 10, x: 40, y: 40 };
-  p.tweak = { ...NO_TWEAK, ...p.tweak, [key]: Math.max(-limits[key], Math.min(limits[key], Math.round(value * 100) / 100)) };
+  p.tweak = { ...NO_TWEAK, ...p.tweak, [key]: clampTo(Math.round(value * 100) / 100, TWEAK_RANGE[key]) };
   if (state.cmode === "side" || state.cmode === "diff") { state.cmode = "fade"; fillCompareControls(); }
   computeTransforms();
   drawCompare();
@@ -3762,28 +3780,41 @@ $("#tweakReset").addEventListener("click", () => {
 //
 // Gli strumenti cambiano la foto scelta in alto (Prima o Dopo). Spostamento, dimensione e rotazione sono il ritocco
 // dell'allineamento (tweak); luce e contrasto sono le stesse regolazioni di Prepara. Annulla rimette tutto com'era
+// Ogni cursore parte da un intervallo comodo (span) e si allarga quando arrivi in fondo: lo lasci, lo riprendi e vai
+// oltre. I valori si possono anche scrivere, cambiare con − e + (tieni premuto) o coi gesti sulla foto.
+// [chiave, etichetta, span di partenza, passo, unità]
 const ED_TOOLS = {
-  move: { label: "Sposta", icon: "i-move", sliders: [["x", "Orizzontale", -40, 40, 1], ["y", "Verticale", -40, 40, 1]], note: "Oppure trascina la foto." },
-  size: { label: "Dimensione", icon: "i-scale", sliders: [["s", "Dimensione", -15, 15, 0.5]] },
-  rot: { label: "Rotazione", icon: "i-rotate", sliders: [["r", "Rotazione", -10, 10, 0.25]] },
-  light: { label: "Luce", icon: "i-sun", sliders: [["bright", "Luce", -50, 50, 1]] },
-  contrast: { label: "Contrasto", icon: "i-contrast", sliders: [["contrast", "Contrasto", -50, 50, 1]] },
+  move: { label: "Sposta", icon: "i-move", sliders: [["x", "Orizzontale", 120, 1, "px"], ["y", "Verticale", 120, 1, "px"]], note: "Oppure trascina la foto." },
+  size: { label: "Dimensione", icon: "i-scale", sliders: [["s", "Dimensione", 30, 0.5, "%"]], note: "Oppure pizzica la foto con due dita, o la rotella del mouse." },
+  rot: { label: "Rotazione", icon: "i-rotate", sliders: [["r", "Rotazione", 20, 0.25, "°"]], note: "Oppure gira due dita sulla foto, o Maiusc + rotella." },
+  light: { label: "Luce", icon: "i-sun", sliders: [["bright", "Luce", 100, 1, ""]] },
+  contrast: { label: "Contrasto", icon: "i-contrast", sliders: [["contrast", "Contrasto", 100, 1, ""]] },
 };
 const TWEAK_KEYS = ["s", "r", "x", "y"];
-const TWEAK_LIMITS = { s: 15, r: 10, x: 40, y: 40 };
+const rangeOf = (key) => TWEAK_RANGE[key] || ADJUST_RANGE[key];
+const edSlider = (key) => Object.values(ED_TOOLS).flatMap((t) => t.sliders).find((s) => s[0] === key);
 const editor = $("#tweakEditor"), edCanvas = $("#edCanvas");
-const ed = { tool: "move", side: "B", fade: 50, backup: null, A: null, B: null };
+// spans: quanto è largo ora ogni cursore (si allarga, non si stringe finché sei nell'editor)
+const ed = { tool: "move", side: "B", fade: 50, backup: null, A: null, B: null, spans: {} };
 const edPhoto = () => ed[ed.side];
 const edValue = (p, key) => TWEAK_KEYS.includes(key) ? (p.tweak?.[key] ?? 0) : p[key];
-const edText = (key, v) => key === "s" ? `${signed(v, v % 1 ? 1 : 0)}%` : key === "r" ? `${signed(v, v % 1 ? 2 : 0).replace(/,?0+$/, "")}°`
-  : `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v)}`;
+// Numero da scrivere nel campo: 12, -3,5 (virgola come in italiano)
+const edNum = (v) => String(Math.round(v * 100) / 100).replace(".", ",");
+// Intervallo del cursore: lo span di partenza, allargato per contenere il valore, dentro i limiti di sicurezza
+function sliderSpan(key, v) {
+  const [, , base] = edSlider(key), [lo, hi] = rangeOf(key);
+  let span = Math.max(ed.spans[key] || base, base);
+  while (Math.abs(v) > span * 0.9 && span < Math.max(-lo, hi)) span *= 2;
+  ed.spans[key] = span;
+  return [Math.max(lo, -span), Math.min(hi, span)];
+}
 const toolChanged = (p, t) => ED_TOOLS[t].sliders.some(([key]) => edValue(p, key));
 
 function openTweakEditor() {
   const ready = readyFor(state.comparePose);
   const A = ready.find((p) => p.key === state.selA), B = ready.find((p) => p.key === state.selB);
   if (!A || !B) return;
-  Object.assign(ed, { A, B, side: state.tweakSide === "A" ? "A" : "B", fade: 50, tool: "move" });
+  Object.assign(ed, { A, B, side: state.tweakSide === "A" ? "A" : "B", fade: 50, tool: "move", spans: {} });
   const snap = (p) => ({ tweak: p.tweak ? { ...p.tweak } : null, bright: p.bright, contrast: p.contrast });
   ed.backup = { A: snap(A), B: snap(B) };
   document.querySelector('[data-ed="A"]').textContent = `Prima · ${labelOf(A)}`;
@@ -3799,33 +3830,76 @@ function renderEdTools() {
   $("#edTools").innerHTML = Object.entries(ED_TOOLS).map(([id, t]) => `<button type="button" role="tab" data-tool="${id}" aria-selected="${id === ed.tool}" class="${toolChanged(p, id) ? "changed" : ""}">`
     + `<svg class="icon"><use href="#${t.icon}"/></svg><span>${t.label}</span><i class="dot" aria-hidden="true"></i></button>`).join("");
   $("#edTools").querySelectorAll("[data-tool]").forEach((b) => b.addEventListener("click", () => { ed.tool = b.dataset.tool; renderEdTools(); }));
-  const tool = ED_TOOLS[ed.tool];
-  $("#edPanel").innerHTML = tool.sliders.map(([key, label, min, max, step]) => {
-    const v = edValue(p, key);
-    return `<label class="slider"><span>${label}</span><input type="range" data-ek="${key}" min="${min}" max="${max}" step="${step}" value="${v}"><output data-eo="${key}">${edText(key, v)}</output></label>`;
+  const tool = ED_TOOLS[ed.tool], single = tool.sliders.length === 1;
+  $("#edPanel").innerHTML = tool.sliders.map(([key, label, , step, unit]) => {
+    const v = edValue(p, key), [min, max] = sliderSpan(key, v);
+    return `<div class="ed-ctl${single ? " single" : ""}"><span class="ed-lbl" id="edl-${key}">${label}</span>`
+      + `<button type="button" class="btn ghost icon-only ed-step" data-step="${key}" data-dir="-1" aria-label="${label}: meno">−</button>`
+      + `<input type="range" data-ek="${key}" min="${min}" max="${max}" step="${step}" value="${v}" aria-labelledby="edl-${key}">`
+      + `<button type="button" class="btn ghost icon-only ed-step" data-step="${key}" data-dir="1" aria-label="${label}: più">+</button>`
+      + `<span class="ed-num"><input class="input" type="text" inputmode="decimal" data-en="${key}" value="${edNum(v)}" aria-label="${label}, valore esatto${unit ? ` in ${unit === "px" ? "pixel" : unit === "%" ? "percento" : "gradi"}` : ""}">${unit ? `<i>${unit}</i>` : ""}</span></div>`;
   }).join("") + `<div class="ed-row"><p class="note">${tool.note ? esc(tool.note) + " " : ""}Cambi il ${ed.side === "A" ? "Prima" : "Dopo"}.</p>`
     + `<button type="button" class="btn ghost" id="edToolReset" ${toolChanged(p, ed.tool) ? "" : "disabled"}>Azzera</button></div>`;
-  $("#edPanel").querySelectorAll("[data-ek]").forEach((input) => input.addEventListener("input", () => setEd(input.dataset.ek, +input.value)));
+  const panel = $("#edPanel");
+  panel.querySelectorAll("[data-ek]").forEach((input) => {
+    input.addEventListener("input", () => setEd(input.dataset.ek, +input.value));
+    // Lasciato in fondo: il cursore si allarga, così riprendendolo vai oltre
+    input.addEventListener("change", () => { if (+input.value <= +input.min || +input.value >= +input.max) growSlider(input.dataset.ek); });
+  });
+  // Valore scritto: con la virgola o col punto, quando premi Invio o lasci il campo
+  panel.querySelectorAll("[data-en]").forEach((input) => {
+    const apply = () => {
+      const n = Number(input.value.trim().replace(",", ".").replace("−", "-"));
+      if (Number.isFinite(n)) setEd(input.dataset.en, n);
+      input.value = edNum(edValue(edPhoto(), input.dataset.en));
+    };
+    input.addEventListener("change", apply);
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); apply(); input.select(); } });
+    input.addEventListener("focus", () => input.select());
+  });
+  // − e +: un passo; tenendo premuto va avanti sempre più veloce
+  panel.querySelectorAll("[data-step]").forEach((b) => {
+    let timer = 0, n = 0;
+    const once = () => { const key = b.dataset.step, [, , , step] = edSlider(key); setEd(key, edValue(edPhoto(), key) + step * +b.dataset.dir * (n > 15 ? 5 : 1)); n++; };
+    const stop = () => { clearTimeout(timer); timer = 0; };
+    const loop = () => { once(); timer = setTimeout(loop, n > 4 ? 40 : 120); };
+    b.addEventListener("pointerdown", (e) => { e.preventDefault(); n = 0; once(); timer = setTimeout(loop, 380); });
+    for (const ev of ["pointerup", "pointerleave", "pointercancel"]) b.addEventListener(ev, stop);
+    b.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); n = 0; once(); } });
+  });
   $("#edToolReset").addEventListener("click", () => { tool.sliders.forEach(([key]) => setEd(key, 0)); renderEdTools(); });
 }
-// Un valore dello strumento sulla foto scelta, subito sulla tela
-let edProcFrame = 0;
+function growSlider(key) {
+  const input = $(`[data-ek="${key}"]`);
+  if (!input) return;
+  ed.spans[key] = (ed.spans[key] || edSlider(key)[2]) * 2;
+  const [min, max] = sliderSpan(key, edValue(edPhoto(), key));
+  Object.assign(input, { min, max });
+  input.value = edValue(edPhoto(), key);
+}
+// Un valore dello strumento sulla foto scelta, subito sulla tela (ridisegno al massimo una volta per fotogramma:
+// coi gesti arrivano tanti valori di fila)
+let edProcFrame = 0, edDrawFrame = 0;
+const edFrame = (fn) => { cancelAnimationFrame(edDrawFrame); edDrawFrame = requestAnimationFrame(fn); };
 function setEd(key, value) {
   const p = edPhoto();
+  if (!p || !Number.isFinite(value)) return;
   if (TWEAK_KEYS.includes(key)) {
-    const lim = TWEAK_LIMITS[key];
-    p.tweak = { ...NO_TWEAK, ...p.tweak, [key]: Math.max(-lim, Math.min(lim, Math.round(value * 100) / 100)) };
-    computeTransforms();
-    drawEd();
+    p.tweak = { ...NO_TWEAK, ...p.tweak, [key]: clampTo(Math.round(value * 100) / 100, TWEAK_RANGE[key]) };
+    edFrame(() => { computeTransforms(); drawEd(); });
   } else {
-    p[key] = Math.max(-50, Math.min(50, Math.round(value)));
+    p[key] = clampTo(Math.round(value), ADJUST_RANGE[key]);
     // Luce e contrasto rifanno la foto: al massimo una volta per fotogramma
     cancelAnimationFrame(edProcFrame);
     edProcFrame = requestAnimationFrame(async () => { await renderProc(p); drawEd(); });
   }
-  const out = $(`[data-eo="${key}"]`), input = $(`[data-ek="${key}"]`);
-  if (out) out.textContent = edText(key, edValue(p, key));
-  if (input && +input.value !== edValue(p, key)) input.value = edValue(p, key);
+  const v = edValue(p, key), num = $(`[data-en="${key}"]`), input = $(`[data-ek="${key}"]`);
+  if (num && document.activeElement !== num) num.value = edNum(v);
+  if (input) {
+    // Arrivato da un gesto o scritto oltre il cursore: il cursore si allarga
+    if (v < +input.min || v > +input.max) { const [min, max] = sliderSpan(key, v); Object.assign(input, { min, max }); }
+    if (+input.value !== v) input.value = v;
+  }
   $("#edTools").querySelector(`[data-tool="${ed.tool}"]`)?.classList.toggle("changed", toolChanged(p, ed.tool));
   const r = $("#edToolReset");
   if (r) r.disabled = !toolChanged(p, ed.tool);
@@ -3871,24 +3945,88 @@ $("#edCancel").addEventListener("click", () => closeTweakEditor(false));
 editor.addEventListener("cancel", (e) => { e.preventDefault(); closeTweakEditor(false); }); // Esc = Annulla
 document.querySelectorAll("[data-ed]").forEach((b) => b.addEventListener("click", () => { ed.side = b.dataset.ed; renderEdTools(); drawEd(); }));
 $("#edFade").addEventListener("input", (e) => { ed.fade = +e.target.value; drawEd(); });
-// Trascinare la tela sposta la foto scelta (in pixel della tela del confronto)
-let edDrag = null;
-edCanvas.addEventListener("pointerdown", (e) => {
+// Gesti sulla foto, senza limiti di corsa:
+// un dito (o il mouse) sposta; due dita spostano, ingrandiscono e ruotano insieme; la rotella ingrandisce
+// (sul trackpad anche pizzicando), con Maiusc ruota. Tutto in pixel della tela del confronto
+const edPointers = new Map();
+let edGesture = null;
+const edScale = () => CW / edCanvas.getBoundingClientRect().width;
+// Fotografia del gesto: da dove partono dita e valori, così il risultato non dipende da quanti eventi arrivano
+function startGesture() {
   const p = edPhoto();
   if (!p) return;
-  edCanvas.setPointerCapture(e.pointerId);
+  const pts = [...edPointers.values()];
+  const c = pts.length === 2 ? mid(pts[0], pts[1]) : pts[0];
+  edGesture = {
+    pts: pts.length, c, d: pts.length === 2 ? dist(pts[0], pts[1]) : 0,
+    a: pts.length === 2 ? Math.atan2(pts[1][1] - pts[0][1], pts[1][0] - pts[0][0]) : 0,
+    x: edValue(p, "x"), y: edValue(p, "y"), s: edValue(p, "s"), r: edValue(p, "r"), k: edScale(),
+  };
+}
+edCanvas.addEventListener("pointerdown", (e) => {
+  if (!edPhoto()) return;
+  try { edCanvas.setPointerCapture(e.pointerId); } catch { /* puntatore già finito: il gesto va lo stesso */ }
+  edPointers.set(e.pointerId, [e.clientX, e.clientY]);
   edCanvas.classList.add("dragging");
-  edDrag = { x: e.clientX, y: e.clientY, tx: edValue(p, "x"), ty: edValue(p, "y"), k: CW / edCanvas.getBoundingClientRect().width };
-  if (ed.tool !== "move") { ed.tool = "move"; renderEdTools(); }
+  startGesture();
+  // Lo strumento in basso segue il gesto: un dito Sposta, due dita Dimensione (o Rotazione se c'eri già)
+  const want = edPointers.size >= 2 ? (ed.tool === "rot" ? "rot" : "size") : "move";
+  if (ed.tool !== want) { ed.tool = want; renderEdTools(); }
 });
 edCanvas.addEventListener("pointermove", (e) => {
-  if (!edDrag) return;
-  setEd("x", edDrag.tx + (e.clientX - edDrag.x) * edDrag.k);
-  setEd("y", edDrag.ty + (e.clientY - edDrag.y) * edDrag.k);
+  if (!edPointers.has(e.pointerId) || !edGesture) return;
+  edPointers.set(e.pointerId, [e.clientX, e.clientY]);
+  const g = edGesture, pts = [...edPointers.values()];
+  if (pts.length !== g.pts) { startGesture(); return; } // un dito in più o in meno: si riparte da qui
+  const c = pts.length === 2 ? mid(pts[0], pts[1]) : pts[0];
+  setEd("x", g.x + (c[0] - g.c[0]) * g.k);
+  setEd("y", g.y + (c[1] - g.c[1]) * g.k);
+  if (pts.length === 2 && g.d > 10) {
+    // Dimensione moltiplicata come la distanza fra le dita; rotazione come il loro angolo
+    setEd("s", ((1 + g.s / 100) * dist(pts[0], pts[1]) / g.d - 1) * 100);
+    const da = Math.atan2(pts[1][1] - pts[0][1], pts[1][0] - pts[0][0]) - g.a;
+    setEd("r", g.r + Math.atan2(Math.sin(da), Math.cos(da)) * 180 / Math.PI);
+  }
 });
-const edDragEnd = () => { edDrag = null; edCanvas.classList.remove("dragging"); };
-edCanvas.addEventListener("pointerup", edDragEnd);
-edCanvas.addEventListener("pointercancel", edDragEnd);
+const edPointerEnd = (e) => {
+  edPointers.delete(e.pointerId);
+  if (edPointers.size) startGesture();
+  else { edGesture = null; edCanvas.classList.remove("dragging"); }
+};
+edCanvas.addEventListener("pointerup", edPointerEnd);
+edCanvas.addEventListener("pointercancel", edPointerEnd);
+edCanvas.addEventListener("wheel", (e) => {
+  const p = edPhoto();
+  if (!p) return;
+  e.preventDefault();
+  const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+  if (e.shiftKey) {
+    // Maiusc + rotella: ruota (il browser a volte mette lo scorrimento in orizzontale)
+    setEd("r", edValue(p, "r") + (dy || e.deltaX) * 0.05);
+    if (ed.tool !== "rot") { ed.tool = "rot"; renderEdTools(); }
+  } else {
+    // Rotella o pizzico sul trackpad (ctrlKey): ingrandisce, moltiplicando
+    setEd("s", ((1 + edValue(p, "s") / 100) * Math.exp(-dy * (e.ctrlKey ? 0.01 : 0.0015)) - 1) * 100);
+    if (ed.tool !== "size") { ed.tool = "size"; renderEdTools(); }
+  }
+}, { passive: false });
+// Tastiera dentro l'editor (non mentre scrivi un valore): frecce spostano, + e − ingrandiscono, < e > ruotano.
+// Con Maiusc passi più grandi
+editor.addEventListener("keydown", (e) => {
+  if (e.target.matches("input[type=text]") || e.metaKey || e.ctrlKey || e.altKey) return;
+  const p = edPhoto();
+  if (!p) return;
+  const big = e.shiftKey ? 10 : 1, v = (key) => edValue(p, key);
+  const keys = {
+    ArrowLeft: ["x", v("x") - big], ArrowRight: ["x", v("x") + big], ArrowUp: ["y", v("y") - big], ArrowDown: ["y", v("y") + big],
+    "+": ["s", v("s") + 0.5 * big], "=": ["s", v("s") + 0.5 * big], "-": ["s", v("s") - 0.5 * big],
+    "<": ["r", v("r") - 0.25 * big], ",": ["r", v("r") - 0.25 * big], ">": ["r", v("r") + 0.25 * big], ".": ["r", v("r") + 0.25 * big],
+  };
+  // Le frecce su un cursore le usa il cursore
+  if (!keys[e.key] || (e.key.startsWith("Arrow") && e.target.matches("input[type=range]"))) return;
+  e.preventDefault();
+  setEd(...keys[e.key]);
+});
 compareCanvas.addEventListener("pointerdown", (e) => { compareCanvas.setPointerCapture(e.pointerId); wipeDrag(e); });
 compareCanvas.addEventListener("pointermove", (e) => { if (e.buttons) wipeDrag(e); });
 function wipeDrag(e) {
@@ -4825,13 +4963,13 @@ function cleanPhoto(v) {
   }
   const out = {
     date: validDate(v.date) ? v.date : "", pose: POSE_KEYS_ALL.includes(v.pose) ? v.pose : "front",
-    flip: v.flip === true, bright: clampNum(v.bright, -50, 50), contrast: clampNum(v.contrast, -50, 50),
+    flip: v.flip === true, bright: clampNum(v.bright, ...ADJUST_RANGE.bright), contrast: clampNum(v.contrast, ...ADJUST_RANGE.contrast),
     align: pts(v.align, 3), meas, noThird: v.noThird === true,
     poseSet: ["auto", "user"].includes(v.poseSet) ? v.poseSet : false, measHand: v.measHand === true,
     use: typeof v.use === "boolean" ? v.use : null,
     auto: v.auto && typeof v.auto === "object" ? { conf: clampNum(v.auto.conf, 0, 1), sure: v.auto.sure === true, ...(v.auto.seed === true ? { seed: true } : {}) } : null,
     lm: Array.isArray(v.lm) ? pts(v.lm, 33) : null,
-    tweak: v.tweak && typeof v.tweak === "object" ? { s: clampNum(v.tweak.s, -15, 15), r: clampNum(v.tweak.r, -10, 10), x: clampNum(v.tweak.x, -40, 40), y: clampNum(v.tweak.y, -40, 40) } : null,
+    tweak: v.tweak && typeof v.tweak === "object" ? Object.fromEntries(TWEAK_KEYS.map((key) => [key, clampNum(v.tweak[key], ...TWEAK_RANGE[key])])) : null,
     scheme: SCHEMES[v.scheme] ? v.scheme : "nipples",
     ...(SIDE_SCHEMES[v.sideScheme] ? { sideScheme: v.sideScheme } : {}),
     stamp: typeof v.stamp === "string" && /^20\d\d:\d\d:\d\d \d\d:\d\d:\d\d$/.test(v.stamp) ? v.stamp : "",
