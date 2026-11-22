@@ -1,5 +1,6 @@
--- Database del bot (Cloudflare D1). Si crea con: npm run db:init
+-- Database del bot (Cloudflare D1). Si crea con: npm run db:init (un database che c'era già: migrations/)
 -- Qui non ci sono foto né file dei progressi: quelli stanno nella chat, su Telegram.
+-- I testi in attesa (voci del diario, didascalie, domande, guida del promemoria) sono cifrati ("e1:…").
 
 -- Un utente per ID Telegram (chat privata col bot)
 CREATE TABLE IF NOT EXISTS users (
@@ -11,7 +12,37 @@ CREATE TABLE IF NOT EXISTS users (
   last_json TEXT,                          -- file_id dell'ultimo file dei progressi mandato nella chat
   guide TEXT,                              -- righe di "Come rifare la foto" per il promemoria (JSON)
   last_group TEXT,                         -- ultimo album di foto ricevuto (si risponde una volta sola)
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  admitted INTEGER NOT NULL DEFAULT 0,     -- 1: ha scritto il codice d'accesso
+  last_msg INTEGER                         -- il messaggio nella chat con l'ultimo file (non si toglie mai)
+);
+
+-- Salvataggi mandati nella chat: quelli non conservati (kept = 0) si tolgono dopo 4 ore, tranne l'ultimo
+CREATE TABLE IF NOT EXISTS saves (
+  user_id INTEGER NOT NULL,
+  message_id INTEGER NOT NULL,
+  file_id TEXT NOT NULL,
+  sent_at INTEGER NOT NULL,
+  kept INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, message_id)
+);
+
+-- Sessioni della pagina: solo l'impronta del codice, scadono dopo 2 ore senza usarle o 12 in tutto
+CREATE TABLE IF NOT EXISTS sessions (
+  token_hash TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  last_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS sessions_user ON sessions (user_id);
+
+-- Quante azioni al giorno (limiti per utente, anche i tentativi col codice d'accesso; user_id 0: utenti nuovi in tutto)
+CREATE TABLE IF NOT EXISTS usage (
+  user_id INTEGER NOT NULL,
+  day TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  n INTEGER NOT NULL,
+  PRIMARY KEY (user_id, day, kind)
 );
 
 -- Foto mandate in chat e non ancora prese dalla pagina

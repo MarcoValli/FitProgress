@@ -38,7 +38,8 @@ createServer(async (req, res) => {
     const doc = form.get("document");
     const data = Buffer.from(await doc.arrayBuffer());
     const id = addFile(data, "json");
-    log.push({ method, chat_id: form.get("chat_id"), caption: form.get("caption"), filename: doc.name, bytes: data.length, contentLength: Number(req.headers["content-length"]), received: body.length, file_id: id });
+    const markup = form.get("reply_markup");
+    log.push({ method, chat_id: form.get("chat_id"), caption: form.get("caption"), reply_markup: markup ? JSON.parse(markup) : null, filename: doc.name, bytes: data.length, contentLength: Number(req.headers["content-length"]), received: body.length, file_id: id });
     return reply(res, 200, { ok: true, result: { message_id: ++messageId, document: { file_id: id, file_name: doc.name } } });
   }
   const args = body.length ? JSON.parse(body) : {};
