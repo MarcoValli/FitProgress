@@ -11,7 +11,7 @@ directory = "./public"
 [[d1_databases]]
 binding = "DB"
 database_name = "fitprogress"
-database_id = "DA-COMPILARE" # l'id che risponde: npx wrangler d1 create fitprogress
+database_id = "88b853b6-37f5-4f27-9fda-d40b473da3bf" # da: npx wrangler d1 create fitprogress
 
 # Promemoria: ogni ora si mandano quelli in scadenza
 [triggers]
@@ -19,7 +19,11 @@ crons = ["0 * * * *"]
 
 [vars]
 TIME_ZONE = "Europe/Rome"
-# ID Telegram che possono usare il bot, separati da virgole, oppure * per tutti.
-# Vuoto: nessuno, e a /start il bot ti dice il tuo ID da mettere qui
-ALLOWED_IDS = ""
-# Segreti (non qui): npx wrangler secret put BOT_TOKEN · npx wrangler secret put WEBHOOK_SECRET
+
+# Secret (non qui, con npx wrangler secret put NOME):
+#   BOT_TOKEN       il token di BotFather
+#   WEBHOOK_SECRET  codice a caso (openssl rand -hex 32): solo Telegram lo conosce
+#   MASTER_KEY      chiave principale, 64 cifre esadecimali (openssl rand -hex 32): da conservare, senza non si
+#                   riapre più nessun file dei progressi
+#   ALLOWED_IDS     ID Telegram ammessi, separati da virgole, oppure * per tutti. Vuoto: nessuno (a /start il bot
+#                   dice l'ID). È un secret perché così non sta nel repository e non cambia a ogni deploy

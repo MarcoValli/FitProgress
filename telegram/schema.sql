@@ -1,5 +1,6 @@
--- Database del bot (Cloudflare D1). Si crea con: npm run db:init
+-- Database del bot (Cloudflare D1). Si crea con: npm run db:init (un database che c'era già: migrations/)
 -- Qui non ci sono foto né file dei progressi: quelli stanno nella chat, su Telegram.
+-- I testi in attesa (voci del diario, didascalie, domande, guida del promemoria) sono cifrati ("e1:…").
 
 -- Un utente per ID Telegram (chat privata col bot)
 CREATE TABLE IF NOT EXISTS users (
@@ -11,7 +12,29 @@ CREATE TABLE IF NOT EXISTS users (
   last_json TEXT,                          -- file_id dell'ultimo file dei progressi mandato nella chat
   guide TEXT,                              -- righe di "Come rifare la foto" per il promemoria (JSON)
   last_group TEXT,                         -- ultimo album di foto ricevuto (si risponde una volta sola)
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  pw_salt TEXT,                            -- sale per la password (PBKDF2, sul telefono)
+  pw_verifier TEXT,                        -- HMAC(pepper, password passata per PBKDF2): la password non c'è
+  pw_fails INTEGER NOT NULL DEFAULT 0,     -- password sbagliate di fila
+  pw_locked_until INTEGER NOT NULL DEFAULT 0
+);
+
+-- Sessioni della pagina: solo l'impronta del codice, scadono dopo 2 ore senza usarle o 12 in tutto
+CREATE TABLE IF NOT EXISTS sessions (
+  token_hash TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  last_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS sessions_user ON sessions (user_id);
+
+-- Quante azioni al giorno (limiti per utente; user_id 0: utenti nuovi in tutto)
+CREATE TABLE IF NOT EXISTS usage (
+  user_id INTEGER NOT NULL,
+  day TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  n INTEGER NOT NULL,
+  PRIMARY KEY (user_id, day, kind)
 );
 
 -- Foto mandate in chat e non ancora prese dalla pagina
