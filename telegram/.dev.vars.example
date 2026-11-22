@@ -1,7 +1,9 @@
 # Prove in locale col finto Telegram: copia in .dev.vars (che git ignora)
 #   cp .dev.vars.example .dev.vars
-# Qui non mettere il token vero: per il Worker vero si usa npx wrangler secret put
+# Qui non mettere i valori veri: per il Worker vero si usa npx wrangler secret put
 BOT_TOKEN=123456:finto
 WEBHOOK_SECRET=prova-locale
-TG_API=http://127.0.0.1:8790
+MASTER_KEY=1111111111111111111111111111111111111111111111111111111111111111
 ALLOWED_IDS=42
+ACCESS_CODE=codice-di-prova
+TG_API=http://127.0.0.1:8790
