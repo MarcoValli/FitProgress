@@ -1,0 +1,41 @@
+# Impronta dello script nella CSP di index.html.
+# Su un ramo: se uno push cambia lo script senza aggiornarla, la ricalcola e la rimette nel ramo con un commit.
+# Su main (protetto: ci si arriva solo con una PR) controlla soltanto: se l'impronta non torna, fallisce.
+# Le Action esterne sono fissate a un commit preciso (non a un'etichetta che si può spostare).
+name: Impronta CSP
+
+on:
+  push:
+    paths:
+      - index.html
+      - tools/csp-hash.mjs
+
+permissions:
+  contents: write
+
+concurrency:
+  group: csp-hash-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  hash:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: ${{ github.ref != 'refs/heads/main' }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Controlla l'impronta (main)
+        if: github.ref == 'refs/heads/main'
+        run: node tools/csp-hash.mjs --check
+      - name: Ricalcola l'impronta e rimettila nel ramo
+        if: github.ref != 'refs/heads/main'
+        run: |
+          node tools/csp-hash.mjs
+          if git diff --quiet -- index.html; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Aggiorna l'impronta dello script nella CSP" -- index.html
+          git push

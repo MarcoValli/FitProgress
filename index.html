@@ -2,9 +2,12 @@
 <html lang="it">
 <head>
 <meta charset="utf-8">
-<!-- Privacy: la pagina può collegarsi solo al proprio sito e, se aperta come file, ai due CDN delle librerie.
-     Niente cookie, niente statistiche, niente invii: il browser blocca qualunque altra connessione. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline' blob: 'wasm-unsafe-eval'; connect-src 'self' blob: data: https://cdn.jsdelivr.net https://storage.googleapis.com; img-src 'self' blob: data:; style-src 'unsafe-inline'; worker-src 'self' blob:; manifest-src 'self'; base-uri 'none'; object-src 'none'; frame-src 'none'; form-action 'none'">
+<!-- Privacy: la pagina può collegarsi solo al proprio sito e, se aperta come file, ai file esatti delle librerie
+     sui due CDN (non al resto di quei siti, dove chiunque può pubblicare). Niente cookie, niente statistiche.
+     Script: parte solo quello di questa pagina, riconosciuto dalla sua impronta SHA-256 (più le librerie
+     controllate, come blob:, e lo script di Telegram, caricato solo dentro Telegram). Dopo ogni modifica allo
+     script: node tools/csp-hash.mjs, se no la pagina non parte (a ogni push lo fa anche la GitHub Action). -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-6gfzNBD5x8SN8py5vMVikcplQN0SjH7jvK2Z1tIDTIQ=' blob: 'wasm-unsafe-eval' https://telegram.org/js/telegram-web-app.js; connect-src 'self' blob: data: https://cdn.jsdelivr.net/npm/heic-to@1.6.7/dist/csp/heic-to.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/vision_bundle.mjs https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.wasm https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task; img-src 'self' blob: data:; style-src 'unsafe-inline'; worker-src 'self' blob:; manifest-src 'self'; base-uri 'none'; object-src 'none'; frame-src 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -16,13 +19,14 @@
 <title>FitProgress</title>
 <!--
   FitProgress: confronto delle foto dei progressi in palestra.
-  Tutto resta nel browser: le foto non vengono caricate da nessuna parte.
+  Le foto non vengono caricate da nessuna parte, e nel browser non si salva niente: tutto sta in memoria
+  finché la pagina è aperta, e resta solo nel file dei progressi (Salva).
   Le librerie (convertitore HEIC e riconoscimento della posa) stanno nella cartella vendor/,
   accanto alla pagina, e si prendono da lì. Solo se vendor/ non si legge (pagina aperta come file
   dal computer, cartella mancante o rete che non risponde) si scaricano da jsDelivr e Google Storage.
   In tutti e due i casi versione e impronta SHA-256 sono fisse.
-  Punti, posa e regolazioni si salvano nel browser (localStorage), legati a nome e
-  dimensione del file: riaprendo la pagina e trascinando le stesse foto si ritrovano.
+  Punti, posa e regolazioni vanno nel file dei progressi, legati a nome e dimensione del file:
+  caricando il file e trascinando le stesse foto si ritrovano.
 -->
 <style>
   :root {
@@ -350,6 +354,9 @@
   .kept-total { font-variant-numeric: tabular-nums; }
   .btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; font-weight: 600; }
   .btn.danger:hover:not(:disabled) { background: #f25555; }
+  /* Salva con un pallino: c'è qualcosa che il file dei progressi non ha ancora */
+  #saveBtn { position: relative; }
+  #saveBtn.dirty::after { content: ""; position: absolute; top: -3px; right: -3px; width: 10px; height: 10px; border-radius: 50%; background: var(--measure); box-shadow: 0 0 0 2px var(--panel); }
   #keptFoot { flex-wrap: wrap; }
 
   .note { color: var(--muted); font-size: 12px; line-height: 1.5; }
@@ -395,6 +402,7 @@
   .link { border: 0; background: none; color: var(--accent); cursor: pointer; padding: 0; font: inherit; font-size: 12px; text-transform: none; letter-spacing: 0; font-weight: 500; }
   .link:hover { text-decoration: underline; }
   .warn { margin: 0; padding: 8px 10px; border-radius: 8px; background: rgba(255,162,76,.12); color: #ffc58f; font-size: 12px; }
+  #pwError:empty { display: none; }
   .switch small { display: block; color: var(--faint); font-size: 11.5px; margin-top: 2px; }
   .pose-label { color: var(--muted); font-size: 12px; margin-bottom: -4px; }
 
@@ -630,7 +638,7 @@
   <button class="btn ghost" id="tipsBtn" title="Come fare le foto"><svg class="icon"><use href="#i-camera"/></svg><span class="lbl">Come fare le foto</span></button>
   <button class="btn ghost icon-only" id="settingsBtn" aria-label="Impostazioni e salvataggio" title="Impostazioni e salvataggio"><svg class="icon"><use href="#i-gear"/></svg></button>
   <button class="btn primary" id="addBtn" aria-label="Aggiungi foto"><svg class="icon"><use href="#i-plus"/></svg><span class="lbl">Aggiungi foto</span></button>
-  <input type="file" id="importInput" accept="application/json,.json" hidden>
+  <input type="file" id="importInput" accept=".fitprogress,.json,.cifrato,application/json,application/octet-stream" hidden>
   <input type="file" id="fileInput" accept="image/*,.heic,.heif" multiple hidden>
 </header>
 
@@ -802,7 +810,7 @@
     <form class="card" id="logForm" aria-labelledby="logFormTitle" novalidate>
       <div>
         <h2 class="card-title" id="logFormTitle">Nuova misurazione</h2>
-        <div class="card-sub" id="logFormSub">Tutto facoltativo, tranne la data e almeno una misura.</div>
+        <div class="card-sub" id="logFormSub">Tutto facoltativo, tranne la data e almeno una misura, l'allenamento o il pasto.</div>
       </div>
       <label class="field"><span>Data</span><input class="input" type="date" id="logDate" required></label>
       <div class="row2" id="logMain"></div>
@@ -810,6 +818,8 @@
         <summary>Circonferenze <small>in cm</small></summary>
         <div class="log-grid" id="logCirc"></div>
       </details>
+      <label class="field"><span>Allenamento</span><input class="input" type="text" id="log-workout" maxlength="200" autocomplete="off" placeholder="Es. gambe, 60 min"></label>
+      <label class="field"><span>Pasto</span><input class="input" type="text" id="log-meal" maxlength="300" autocomplete="off" placeholder="Es. cena: pizza e birra"></label>
       <label class="field"><span>Nota</span><input class="input" type="text" id="logNote" maxlength="200" autocomplete="off" placeholder="Es. settimana di vacanza"></label>
       <p class="warn" id="logError" role="alert" hidden></p>
       <div class="actions">
@@ -853,7 +863,7 @@
   <div class="sheet-body" id="startBody"></div>
 </dialog>
 
-<!-- Foto salvate nel browser e nel file: riferimenti, partenza, Dopo e tappe -->
+<!-- Foto tenute nel file dei progressi: riferimenti, partenza, Dopo e tappe -->
 <dialog class="dialog" id="keptDialog" aria-labelledby="keptTitle">
   <form method="dialog">
     <header><h2 id="keptTitle">Foto salvate</h2><p class="intro" id="keptIntro"></p></header>
@@ -879,6 +889,21 @@
   <nav class="ed-tools" id="edTools" role="tablist" aria-label="Strumenti"></nav>
 </dialog>
 
+<!-- Password (per ora, solo per i tester): all'apertura, per un file fatto con un'altra password, prima di salvare -->
+<dialog class="dialog small" id="pwDialog" aria-labelledby="pwTitle">
+  <form id="pwForm" novalidate>
+    <header><h2 id="pwTitle">Password</h2><p class="intro" id="pwIntro"></p></header>
+    <div class="body">
+      <label class="field"><span>Password</span><input class="input" type="password" id="pwInput" autocomplete="current-password" maxlength="200"></label>
+      <p class="warn" id="pwError" role="alert" aria-live="polite"></p>
+    </div>
+    <footer>
+      <button class="btn" type="button" id="pwCancel" hidden>Annulla</button>
+      <button class="btn primary" type="submit" id="pwOk">Entra</button>
+    </footer>
+  </form>
+</dialog>
+
 <!-- File dei progressi pronto: sul telefono il foglio di condivisione si apre solo con un tocco -->
 <dialog class="dialog small" id="saveDialog" aria-labelledby="saveDialogTitle">
   <form method="dialog">
@@ -897,6 +922,7 @@
     <header><h2 id="settingsTitle">Impostazioni</h2><p class="intro"></p></header>
     <div class="body"></div>
     <footer>
+      <button class="btn ghost" type="button" id="settingsImport" hidden>Carica un file</button>
       <button class="btn" type="button" id="settingsCancel">Annulla</button>
       <button class="btn primary" value="save" id="settingsSave">Salva</button>
     </footer>
@@ -905,6 +931,225 @@
 
 <script>
 "use strict";
+
+// ------------------------------------------------------------------ niente nel browser: tutto in memoria
+//
+// La pagina non scrive niente nel browser (niente localStorage, IndexedDB, cookie). Punti, misure, diario,
+// impostazioni e foto stanno in memoria finché la pagina è aperta; l'unico posto dove restano è il file dei
+// progressi (Salva). Chiudendo la pagina senza salvare si perde il lavoro: per questo il browser lo chiede prima.
+// mem fa le veci di localStorage (stessi metodi), idb più sotto quelle di IndexedDB: il resto del codice è lo stesso.
+let dirty = false; // c'è qualcosa che il file dei progressi non ha ancora
+let quiet = 0; // > 0: si sta caricando un file, le scritture non contano come modifiche
+const NOT_WORK = new Set(["progressi.lastExport"]); // promemoria della pagina, non lavoro tuo
+function markDirty(k) {
+  if (quiet || NOT_WORK.has(k) || dirty) return;
+  // Senza foto e senza diario non c'è lavoro da perdere: le impostazioni (la finestra di ogni apertura) e i ruoli
+  // vuoti che la pagina scrive da sola contano solo se c'è altro
+  if (!state.photos.length && !diary.length) return;
+  dirty = true;
+  document.dispatchEvent(new Event("fp-dirty"));
+}
+const mem = (() => {
+  const m = new Map();
+  return {
+    get length() { return m.size; },
+    key: (i) => [...m.keys()][i] ?? null,
+    getItem: (k) => (m.has(k) ? m.get(k) : null),
+    setItem: (k, v) => { if (m.get(k) !== String(v)) { m.set(k, String(v)); markDirty(k); } },
+    removeItem: (k) => { if (m.delete(k)) markDirty(k); },
+  };
+})();
+
+// Versioni di prima salvavano nel browser: i dati che ci sono si riprendono una volta (passano in memoria, poi
+// si tolgono dal browser). Risponde i dati nel formato del file dei progressi, o null se non c'era niente
+async function takeLegacy() {
+  let ls = null;
+  try { ls = window.localStorage; } catch { return null; }
+  const keys = [];
+  try { for (let i = 0; i < ls.length; i++) { const k = ls.key(i); if (k?.startsWith("progressi")) keys.push(k); } } catch { return null; }
+  const read = (k) => { try { return JSON.parse(ls.getItem(k)); } catch { return null; } };
+  const records = { refs: [], kept: [] };
+  let hadDb = true;
+  try { if (indexedDB.databases) hadDb = (await indexedDB.databases()).some((d) => d.name === "progressi"); } catch { /* si prova ad aprirlo */ }
+  if (hadDb) {
+    await new Promise((resolve) => {
+      const open = indexedDB.open("progressi");
+      open.onupgradeneeded = () => open.transaction.abort(); // non c'era: non lo si crea
+      open.onerror = open.onblocked = () => resolve();
+      open.onsuccess = () => {
+        const db = open.result, names = ["refs", "kept"].filter((s) => db.objectStoreNames.contains(s));
+        if (!names.length) { db.close(); resolve(); return; }
+        const tx = db.transaction(names, "readonly");
+        for (const s of names) { const q = tx.objectStore(s).getAll(); q.onsuccess = () => { records[s] = q.result || []; }; }
+        tx.oncomplete = tx.onerror = tx.onabort = () => { db.close(); resolve(); };
+      };
+    });
+  }
+  if (!keys.length && !records.refs.length && !records.kept.length) return null;
+  const photos = {};
+  for (const k of keys) if (k.startsWith("progressi:") && k !== "progressi:settings") photos[k] = read(k);
+  const toUrl = (r) => new Promise((resolve) => {
+    const blob = r.data ? new Blob([r.data], { type: r.type || "image/jpeg" }) : r.blob;
+    if (!(blob instanceof Blob)) { resolve(null); return; }
+    const fr = new FileReader();
+    fr.onload = () => resolve(fr.result);
+    fr.onerror = () => resolve(null);
+    fr.readAsDataURL(blob);
+  });
+  const images = async (list) => (await Promise.all(list.map(async (r) => ({ key: r.key, name: r.name, date: r.date, stamp: r.stamp, image: await toUrl(r) })))).filter((r) => r.image);
+  return {
+    app: "fitprogress", settings: read("progressi:settings"), photos,
+    diary: read("progressi.diary"), keptRoles: read("progressi.kept"),
+    refs: await images(records.refs), kept: await images(records.kept),
+  };
+}
+// Toglie dal browser quello che le versioni di prima ci avevano salvato
+function clearLegacy() {
+  try {
+    const ls = window.localStorage, keys = [];
+    for (let i = 0; i < ls.length; i++) { const k = ls.key(i); if (k?.startsWith("progressi")) keys.push(k); }
+    keys.forEach((k) => ls.removeItem(k));
+  } catch { /* niente da togliere */ }
+  return new Promise((resolve) => {
+    try {
+      const q = indexedDB.deleteDatabase("progressi");
+      q.onsuccess = q.onerror = q.onblocked = () => resolve();
+    } catch { resolve(); }
+  });
+}
+
+// ------------------------------------------------------------------ Telegram (facoltativo)
+//
+// Aperta dal bot dentro Telegram (Mini App), la pagina tiene i progressi nella chat col bot: all'apertura prende
+// l'ultimo file dei progressi, le foto mandate in chat e le voci del diario scritte al bot; Salva rimanda il file
+// nella chat. Fuori da Telegram non cambia niente. Il bot (cartella telegram/) serve anche questa pagina, quindi
+// le parla sullo stesso indirizzo (api/…). Telegram passa i dati firmati dell'utente nell'indirizzo (#tgWebAppData):
+// con quelli (tgLogin) il bot dà una sessione breve e la chiave del file, tenute solo in memoria.
+const TG = (() => {
+  try {
+    const initData = new URLSearchParams(location.hash.slice(1)).get("tgWebAppData");
+    // consumed: righe del bot (foto, voci del diario) già prese, da togliere dalla chat al prossimo Salva
+    return initData ? { initData, consumed: { photos: [], diary: [] } } : null;
+  } catch { return null; }
+})();
+
+// ------------------------------------------------------------------ password e file dei progressi cifrato
+//
+// PER ORA, SOLO PER I TESTER: la password è una sola, quella che il gestore dà ai tester (su Telegram è anche il
+// codice d'accesso del bot). Si chiede a ogni apertura, qui e dentro Telegram, e resta solo in memoria.
+// Il file dei progressi (qui e nella chat) è cifrato con lei: FPP1 · giri (4) · sale (16) · iv (12) · dati,
+// AES-GCM con la chiave da PBKDF2-SHA256. L'intestazione è autenticata. I file in chiaro di prima si aprono ancora.
+// Qui la password non si può controllare (la pagina è pubblica, non sa qual è): la prova vera è aprire un file;
+// se non ne hai aperto nessuno, al primo salvataggio la si riscrive, così un errore di battitura non chiude il file.
+// Prima di distribuire FitProgress: via password e cifratura (vedi APPUNTI.md).
+const FPP = { magic: [70, 80, 80, 49], iter: 600000, head: 36 }; // "FPP1"
+const PW = { value: "", checked: false, salt: null, keys: new Map() };
+async function pwKey(pw, salt, iter) {
+  const id = `${iter}:${[...salt].join(",")}:${pw}`;
+  if (!PW.keys.has(id)) {
+    const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw.normalize("NFC")), "PBKDF2", false, ["deriveKey"]);
+    PW.keys.set(id, await crypto.subtle.deriveKey({ name: "PBKDF2", hash: "SHA-256", salt, iterations: iter }, base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]));
+  }
+  return PW.keys.get(id);
+}
+// Un sale per sessione (la chiave si calcola una volta sola), un iv nuovo per ogni salvataggio
+async function sealWithPassword(text) {
+  PW.salt ??= crypto.getRandomValues(new Uint8Array(16));
+  const head = new Uint8Array(FPP.head), iv = crypto.getRandomValues(new Uint8Array(12));
+  head.set(FPP.magic);
+  new DataView(head.buffer).setUint32(4, FPP.iter);
+  head.set(PW.salt, 8);
+  head.set(iv, 24);
+  const key = await pwKey(PW.value, PW.salt, FPP.iter);
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: head }, key, new TextEncoder().encode(text));
+  return new Blob([head, ct], { type: "application/octet-stream" });
+}
+const isSealed = (b) => FPP.magic.every((x, i) => b[i] === x);
+async function openWithPassword(b, pw) {
+  const head = b.slice(0, FPP.head), iter = new DataView(head.buffer).getUint32(4);
+  if (iter < 100000 || iter > 5e6) throw new Error("formato");
+  const key = await pwKey(pw, head.slice(8, 24), iter);
+  return new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: head.slice(24, 36), additionalData: head }, key, b.slice(FPP.head)));
+}
+// Il file dei progressi, cifrato o no, come oggetto. Se la password di adesso non lo apre (file fatto con una
+// password di prima) la si chiede; Annulla: null
+async function openProgressFile(buf) {
+  const b = new Uint8Array(buf);
+  if (isSealed(b)) {
+    busyStart("Apro il file dei progressi…");
+    try {
+      try {
+        const text = await openWithPassword(b, PW.value);
+        PW.checked = true;
+        return JSON.parse(text);
+      } catch { /* altra password */ }
+    } finally { busyEnd(); }
+    let text = null;
+    await askPassword({
+      title: "Password del file",
+      intro: "Questo file è cifrato con un'altra password, forse quella di prima. Scrivila per aprirlo: lo salverai con quella di adesso.",
+      cancel: true,
+      check: async (pw) => { try { text = await openWithPassword(b, pw); return null; } catch { return "Non è questa."; } },
+    });
+    return text ? JSON.parse(text) : null;
+  }
+  if (TG?.fileKey && b[0] === 70 && b[1] === 80 && b[2] === 69 && b[3] === 49) { // "FPE1": la chat, versione di prima
+    const head = b.slice(0, 24);
+    return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: head.slice(12), additionalData: head }, TG.fileKey, b.slice(24))));
+  }
+  if (b[0] === 0x7b) return JSON.parse(new TextDecoder().decode(b)); // "{": file in chiaro di prima
+  throw new Error("formato");
+}
+// Finestra della password. check(pw): null se va bene, se no il messaggio d'errore. cancel: si può annullare
+// (risponde null). Esc non la chiude se non si può annullare
+function askPassword({ title = "Password", intro = "", cancel = false, check = async () => null, again = false }) {
+  const dlg = $("#pwDialog");
+  $("#pwTitle").textContent = title;
+  $("#pwIntro").textContent = intro;
+  $("#pwCancel").hidden = !cancel;
+  $("#pwInput").value = "";
+  $("#pwError").textContent = "";
+  $("#pwInput").autocomplete = again ? "new-password" : "current-password";
+  dlg.showModal();
+  $("#pwInput").focus();
+  return new Promise((resolve) => {
+    const done = (v) => { dlg.onclose = null; $("#pwForm").onsubmit = null; $("#pwCancel").onclick = null; dlg.oncancel = null; if (dlg.open) dlg.close(); $("#pwInput").value = ""; resolve(v); };
+    dlg.oncancel = (e) => { if (!cancel) e.preventDefault(); };
+    dlg.onclose = () => done(null);
+    $("#pwCancel").onclick = () => done(null);
+    $("#pwForm").onsubmit = async (e) => {
+      e.preventDefault();
+      const pw = $("#pwInput").value;
+      if (!pw) { $("#pwError").textContent = "Scrivi la password."; return; }
+      $("#pwOk").disabled = true;
+      $("#pwError").textContent = "Controllo…";
+      try {
+        const err = await check(pw);
+        if (err) { $("#pwError").textContent = err; return; }
+        done(pw);
+      } finally { $("#pwOk").disabled = false; }
+    };
+  });
+}
+// Fuori da Telegram, all'apertura: la password che ti hanno dato
+async function askPlatformPassword() {
+  PW.value = await askPassword({
+    intro: "Scrivi la password che ti hanno dato: cifra il file dei progressi, e senza non si apre. Resta solo finché la pagina è aperta.",
+  });
+}
+// Prima di salvare con una password mai provata su un file: riscriverla, così un errore di battitura non chiude il file
+async function confirmPassword() {
+  if (PW.checked) return true;
+  const pw = await askPassword({
+    title: "Riscrivi la password",
+    intro: "Il file dei progressi si cifra con questa password: riscrivila per essere sicuri che sia giusta.",
+    cancel: true, again: true,
+    check: async (p) => (p === PW.value ? null : "Non è uguale a quella scritta all'apertura."),
+  });
+  if (pw === null) return false;
+  PW.checked = true;
+  return true;
+}
 
 // ------------------------------------------------------------------ impostazioni e pose
 //
@@ -996,7 +1241,7 @@ function defaultSettings(who = "male", framing = "torso") {
 }
 function loadSettings() {
   try {
-    const s = JSON.parse(localStorage.getItem(SETTINGS_KEY));
+    const s = JSON.parse(mem.getItem(SETTINGS_KEY));
     if (s && FRAMINGS[s.framing] && SCHEMES[s.scheme] && s.measures) {
       // Le impostazioni salvate prima di una scelta nuova prendono il valore che c'era (di lato: dipendeva da chi usa l'app)
       const d = defaultSettings(WHO[s.who] ? s.who : "male", s.framing), out = { ...d, ...s };
@@ -1008,7 +1253,6 @@ function loadSettings() {
   return null;
 }
 let settings = loadSettings() || defaultSettings();
-const settingsSaved = !!loadSettings();
 const gendered = (v) => typeof v === "string" ? v : v[settings.who] || v.custom || v.male;
 
 // La tela del confronto. U = distanza fra la base del collo e l'ombelico, in pixel della tela
@@ -1118,6 +1362,15 @@ function busyEnd() {
   const left = 450 - (Date.now() - busy.shownAt);
   if ($("#busy").hidden || left <= 0) hide();
   else busy.timer = setTimeout(hide, left);
+}
+// Aspetta che quello che è cambiato sia davvero a schermo (in una scheda nascosta non si disegna: basta un attimo)
+const nextPaint = () => new Promise((r) => { requestAnimationFrame(() => setTimeout(r)); setTimeout(r, 100); });
+// Allineamenti: lavoro pesante che ferma la pagina, e a pagina ferma il timer dei 250 ms non scatta mai.
+// La copertura va a schermo subito, prima di cominciare
+async function busyNow() {
+  if (!busy.depth) return;
+  if ($("#busy").hidden) { clearTimeout(busy.timer); showBusy(); }
+  await nextPaint();
 }
 
 let toastTimer = 0;
@@ -1290,19 +1543,19 @@ const validDate = (d) => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d);
 function findByStamp(stamp) {
   if (!stamp) return null;
   const found = [];
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i);
+  for (let i = 0; i < mem.length; i++) {
+    const k = mem.key(i);
     if (!k.startsWith("progressi:") || k === SETTINGS_KEY) continue;
-    try { const v = JSON.parse(localStorage.getItem(k)); if (v?.stamp === stamp) found.push(k); } catch { /* rovinato */ }
+    try { const v = JSON.parse(mem.getItem(k)); if (v?.stamp === stamp) found.push(k); } catch { /* rovinato */ }
   }
   if (found.length !== 1 || state.photos.some((p) => p.key === found[0])) return null;
-  try { return JSON.parse(localStorage.getItem(found[0])); } catch { return null; }
+  try { return JSON.parse(mem.getItem(found[0])); } catch { return null; }
 }
 
 // legacyK: di quanto riscalare punti salvati senza misura della foto (versioni vecchie, sempre a 1600 px)
 async function makePhoto(key, name, baseBlob, date, stamp = "", legacyK = 1) {
   let saved = null;
-  try { saved = JSON.parse(localStorage.getItem(key)); } catch { /* niente salvato */ }
+  try { saved = JSON.parse(mem.getItem(key)); } catch { /* niente salvato */ }
   saved ??= findByStamp(stamp);
   const p = {
     key, name, baseBlob, stamp: stamp || saved?.stamp || "", proc: null, w: 0, h: 0, thumb: "", M: null,
@@ -1329,7 +1582,7 @@ async function makePhoto(key, name, baseBlob, date, stamp = "", legacyK = 1) {
     mapMeas(p, sc);
     if (p.lm) p.lm = p.lm.map(sc);
   }
-  if (saved && (!saved.dims || k !== 1 || !saved.stamp || !localStorage.getItem(key))) save(p);
+  if (saved && (!saved.dims || k !== 1 || !saved.stamp || !mem.getItem(key))) save(p);
   return p;
 }
 
@@ -1372,7 +1625,6 @@ async function addFiles(files) {
   if (heicOffline) toast(location.protocol === "file:" ? "Per aprire le HEIC da file serve internet (si scarica il convertitore, le foto restano sul dispositivo). Oppure apri la pagina con Safari." : "Non riesco a caricare il convertitore HEIC. Riprova, oppure apri la pagina con Safari.");
   else if (failed.length) toast(`Non riesco ad aprire ${failed.join(", ")}.`);
   else if (added) toast(added === 1 ? "1 foto aggiunta" : `${added} foto aggiunte`);
-  if (added) navigator.storage?.persist?.().catch(() => {});
   // Foto aggiunte dal diario: si passa a prepararle
   if (added && state.view === "log") state.view = "prepare";
   if (added) state.goCompare = true; // in automatico, finito il lavoro si apre il confronto
@@ -1385,36 +1637,29 @@ async function addFiles(files) {
   }
 }
 
-// ------------------------------------------------------------------ riferimenti (IndexedDB, solo in questo browser)
+// ------------------------------------------------------------------ riferimenti e foto tenute (in memoria)
 
 const MAX_REFS = 2; // per posa
-// Due archivi: "refs" per i riferimenti (la stella), "kept" per le foto salvate per il confronto
-// (partenza e Dopo, vedi più sotto). Stessa forma: { key, name, date, stamp, data, type, savedAt }.
-// L'immagine si salva come byte (data, ArrayBuffer) e non come Blob: Safari in alcuni casi (per esempio in
-// navigazione privata) rifiuta i Blob in IndexedDB, e le foto salvate sparivano senza avviso.
-// I record di prima hanno ancora blob: si leggono lo stesso (readRecord)
+// Due archivi: "refs" per i riferimenti (la stella), "kept" per le foto tenute per il confronto
+// (partenza e Dopo, vedi più sotto). Stessa forma: { key, name, date, stamp, blob, type, savedAt }.
+// Stanno in memoria, non in IndexedDB (vedi mem, in cima), con gli stessi metodi di prima (getAll, put, delete,
+// clear, count): spariscono chiudendo la pagina, restano nel file dei progressi
+const memStores = { refs: new Map(), kept: new Map() };
 function idb(mode, fn, store = "refs") {
-  return new Promise((resolve, reject) => {
-    const open = indexedDB.open("progressi", 2);
-    open.onupgradeneeded = () => {
-      for (const s of ["refs", "kept"]) if (!open.result.objectStoreNames.contains(s)) open.result.createObjectStore(s, { keyPath: "key" });
-    };
-    open.onerror = () => reject(open.error || new Error("idb"));
-    open.onsuccess = () => {
-      const db = open.result;
-      let tx, req;
-      try {
-        tx = db.transaction(store, mode);
-        req = fn(tx.objectStore(store));
-      } catch (e) { db.close(); reject(e); return; }
-      tx.oncomplete = () => { db.close(); resolve(req?.result); };
-      tx.onerror = tx.onabort = () => { db.close(); reject(tx.error || new Error("idb")); };
-    };
-  });
+  const m = memStores[store];
+  const write = (f) => (...a) => { if (mode !== "readwrite") throw new Error("readonly"); const r = f(...a); markDirty(store); return { result: r }; };
+  const os = {
+    getAll: () => ({ result: [...m.values()] }),
+    count: () => ({ result: m.size }),
+    put: write((rec) => { m.set(rec.key, rec); return rec.key; }),
+    delete: write((k) => { m.delete(k); }),
+    clear: write(() => { m.clear(); }),
+  };
+  try { return Promise.resolve(fn(os)?.result); } catch (e) { return Promise.reject(e); }
 }
-// Record da salvare: l'immagine diventa byte
+// Record da tenere: l'immagine resta un Blob (in memoria, niente copie)
 async function makeRecord({ key, name, date, stamp }, blob) {
-  return { key, name, date: date || "", stamp: stamp || "", data: await blob.arrayBuffer(), type: blob.type || "image/jpeg", savedAt: Date.now() };
+  return { key, name, date: date || "", stamp: stamp || "", blob, type: blob.type || "image/jpeg", savedAt: Date.now() };
 }
 const putRecord = async (store, meta, blob) => { const rec = await makeRecord(meta, blob); return idb("readwrite", (s) => s.put(rec), store); };
 // Record letto: blob, che sia salvato come byte o (versioni di prima) come Blob
@@ -1436,9 +1681,9 @@ async function setRef(p, on) {
       state.refKeys.delete(p.key);
     }
     p.ref = on;
-    toast(on ? "Salvata come riferimento, solo in questo browser" : "Tolta dai riferimenti");
+    toast(on ? "Salvata come riferimento: finisce nel file dei progressi" : "Tolta dai riferimenti");
   } catch {
-    toast("Non riesco a salvare nel browser");
+    toast("Non riesco a tenere la foto");
   }
   refresh();
   if (on) processQueue();
@@ -1486,7 +1731,7 @@ async function openSaved(all, refKeys) {
 // Per ogni posa: la foto di partenza (il Prima fisso, la scegli tu fra quelle che ti propongo) e il Dopo, la foto più
 // recente più adatta alla partenza. Tutte e due si salvano come immagini (archivio "kept"), così riaprendo la pagina
 // il confronto c'è anche senza trascinare le foto. Quando arriva un Dopo più nuovo, quello di prima resta salvato
-// come tappa: i progressi restano tracciati. Ruoli in localStorage, immagini in IndexedDB e nel file dei progressi.
+// come tappa: i progressi restano tracciati. Ruoli e immagini in memoria e nel file dei progressi.
 
 const KEPT_KEY = "progressi.kept";
 const keptRoles = () => ({ start: {}, after: {}, tappe: [] });
@@ -1501,12 +1746,13 @@ function cleanKeptRoles(v) {
   if (Array.isArray(v.tappe)) out.tappe = [...new Set(v.tappe.filter(isPhotoKey))].slice(-1000);
   return out;
 }
-let kept = (() => { try { return cleanKeptRoles(JSON.parse(localStorage.getItem(KEPT_KEY))); } catch { return keptRoles(); } })();
+let kept = (() => { try { return cleanKeptRoles(JSON.parse(mem.getItem(KEPT_KEY))); } catch { return keptRoles(); } })();
 function saveKeptRoles() {
-  try { localStorage.setItem(KEPT_KEY, JSON.stringify(kept)); } catch { /* spazio pieno */ }
+  try { mem.setItem(KEPT_KEY, JSON.stringify(kept)); } catch { /* spazio pieno */ }
 }
 // Chiavi che devono avere l'immagine salvata
-const keptNeeded = () => new Set([...Object.values(kept.start), ...Object.values(kept.after), ...kept.tappe]);
+// Su Telegram tutte le foto: dalla chat si cancellano, restano solo nel file dei progressi
+const keptNeeded = () => new Set([...Object.values(kept.start), ...Object.values(kept.after), ...kept.tappe, ...(TG ? state.photos.map((p) => p.key) : [])]);
 function renameKept(from, to) {
   for (const role of ["start", "after"]) for (const k of POSE_KEYS_ALL) if (kept[role][k] === from) kept[role][k] = to;
   kept.tappe = [...new Set(kept.tappe.map((x) => (x === from ? to : x)))];
@@ -1529,7 +1775,7 @@ function bestAfter(k) {
   return pool.filter((r) => days(r.p) <= 7).sort((a, b) => a.rank - b.rank || byDate(b.p, a.p))[0].p;
 }
 
-// Aggiorna i Dopo e mette nel browser le immagini che servono (toglie quelle che non servono più).
+// Aggiorna i Dopo e tiene in memoria le immagini che servono (toglie quelle che non servono più).
 // Una alla volta: la coda e la scelta della partenza possono chiamarla insieme
 let keptChain = Promise.resolve();
 function updateKept() {
@@ -1552,14 +1798,13 @@ function updateKept() {
         if (!p) continue;
         await putRecord("kept", p, p.baseBlob);
         state.keptKeys.add(key);
-        navigator.storage?.persist?.().catch(() => {});
       }
       for (const key of [...state.keptKeys]) {
         if (need.has(key)) continue;
         await idb("readwrite", (s) => s.delete(key), "kept");
         state.keptKeys.delete(key);
       }
-    } catch { toast("Non riesco a salvare le foto del confronto nel browser"); }
+    } catch { toast("Non riesco a tenere le foto del confronto"); }
     return changed;
   });
   return keptChain;
@@ -1572,14 +1817,14 @@ async function setStart(p) {
   // Il confronto riparte da partenza e Dopo
   if (state.comparePose === p.pose) { state.selA = null; state.selB = null; }
   await updateKept();
-  toast(`Foto di partenza ${POSES[p.pose].label.toLowerCase()}: ${labelOf(p)}. Resta salvata in questo browser`);
+  toast(`Foto di partenza ${POSES[p.pose].label.toLowerCase()}: ${labelOf(p)}. Finisce nel file dei progressi`);
   refresh();
 }
 
 function save(p) {
   const { date, pose, flip, bright, contrast, align, meas, noThird, use, auto, lm, tweak, stamp, poseSet, measHand } = p;
   const { scheme, sideScheme } = settings, dims = [p.w, p.h];
-  try { localStorage.setItem(p.key, JSON.stringify({ date, pose, flip, bright, contrast, align, meas, noThird, use, auto, lm, tweak, scheme, sideScheme, dims, stamp, poseSet, measHand })); } catch { /* spazio pieno */ }
+  try { mem.setItem(p.key, JSON.stringify({ date, pose, flip, bright, contrast, align, meas, noThird, use, auto, lm, tweak, scheme, sideScheme, dims, stamp, poseSet, measHand })); } catch { /* spazio pieno */ }
 }
 
 // Foto con specchio, luce e contrasto applicati. I punti sono in queste coordinate.
@@ -1721,13 +1966,13 @@ function schedulePair(A, B) {
   if (pairPending.has(sig)) return;
   pairPending.add(sig);
   busyStart("Allineo il Dopo sul Prima…");
-  setTimeout(() => {
+  busyNow().then(() => {
     try { pairCache.set(sig, computePair(A, B)); } catch { pairCache.set(sig, { pts: pairPts(B, false), dst: pairPts(A, false), how: "points" }); }
     while (pairCache.size > 40) pairCache.delete(pairCache.keys().next().value);
     pairPending.delete(sig);
     busyEnd();
     refresh();
-  }, 30);
+  });
 }
 
 // Larghezze (nella tela del confronto) e rapporti delle misure fatte
@@ -2406,12 +2651,12 @@ async function processQueue() {
     let seeded = 0;
     if (settings.detect === "auto") {
       for (const k of POSE_KEYS) {
-        if (seedCandidates(k).length) busyStep(`Cerco i punti nella prima foto ${POSES[k].label.toLowerCase()}`);
+        if (seedCandidates(k).length) { busyStep(`Cerco i punti nella prima foto ${POSES[k].label.toLowerCase()}`); await busyNow(); }
         // Fra le foto della posa, la stima più sicura fa da partenza (a parità, la più vecchia)
         let pick = null;
         for (const p of seedCandidates(k)) {
           p.seedTried = true;
-          await new Promise((r) => setTimeout(r));
+          await nextPaint();
           const r = seedAlign(p);
           if (r && (!pick || r.conf > pick.r.conf)) pick = { p, r };
           if (r?.conf >= 0.6) break;
@@ -2432,7 +2677,7 @@ async function processQueue() {
     let done = 0;
     for (const [i, p] of pending.entries()) {
       busyStep("Allineo le foto", i + 1, pending.length);
-      await new Promise((r) => setTimeout(r));
+      await busyNow(); // a schermo anche "3 di 10", non solo la prima volta
       if (autoAlign(p)) done++;
       else p.autoSkip = true;
       changedAny = true;
@@ -2627,7 +2872,7 @@ function updatePrepare() {
   // Foto di partenza: il Prima del confronto. Serve allineata
   $("#startBtn").disabled = isStart || !p.M;
   $("#startBtn span").textContent = isStart ? "È la foto di partenza" : "Usa come foto di partenza";
-  $("#startBtn").title = isStart ? `Il Prima dei confronti ${pose.label.toLowerCase()}` : p.M ? `Il Prima dei confronti ${pose.label.toLowerCase()}: resta salvata in questo browser` : "Prima va allineata";
+  $("#startBtn").title = isStart ? `Il Prima dei confronti ${pose.label.toLowerCase()}` : p.M ? `Il Prima dei confronti ${pose.label.toLowerCase()}: finisce nel file dei progressi` : "Prima va allineata";
   const nMeas = pose.measures.filter((id) => p.meas[id]?.length === 2).length;
   $("#pointsSum").textContent = !p.M ? (p.align.length ? `${p.align.length} punti di ${alignSteps(p).length}` : "da allineare")
     : `${p.auto ? "allineata in automatico" : "allineata"}${pose.measures.length ? ` · ${nMeas}/${pose.measures.length} misure` : ""}`;
@@ -2664,9 +2909,9 @@ function updatePrepare() {
   const refFull = !p.ref && refs >= MAX_REFS;
   $("#refBtn").setAttribute("aria-pressed", p.ref);
   $("#refBtn").disabled = refFull;
-  $("#refBtn").title = p.ref ? "Riferimento: tocca per toglierlo" : refFull ? `Hai già ${MAX_REFS} riferimenti ${pose.label.toLowerCase()}: togline uno` : "Usa come riferimento (resta salvata solo in questo browser)";
+  $("#refBtn").title = p.ref ? "Riferimento: tocca per toglierlo" : refFull ? `Hai già ${MAX_REFS} riferimenti ${pose.label.toLowerCase()}: togline uno` : "Usa come riferimento (finisce nel file dei progressi)";
   $("#refBtn").setAttribute("aria-label", p.ref ? "Togli dai riferimenti" : "Usa come riferimento");
-  $("#refNote").textContent = p.ref ? "È un riferimento: la foto da rifare uguale. Resta salvata solo in questo browser." : "La stella in alto la rende un riferimento: la foto da rifare uguale.";
+  $("#refNote").textContent = p.ref ? "È un riferimento: la foto da rifare uguale. Finisce nel file dei progressi." : "La stella in alto la rende un riferimento: la foto da rifare uguale.";
   const ref = refFor(p.pose);
   const tips = ref && ref !== p ? coachTips(p, ref) : null;
   $("#coachSection").hidden = !tips;
@@ -3333,7 +3578,7 @@ function renderStart() {
       <button type="button" class="btn ghost" id="startLater">${startManual ? "Annulla" : "Più tardi"}</button>
       <button type="button" class="btn primary start-ok" id="startOk">OK</button>
     </div>
-    <p class="note start-foot">Resta salvata in questo browser e nel file dei progressi, insieme al Dopo più adatto: riaprendo la pagina il confronto c'è già, anche senza le foto.</p>`;
+    <p class="note start-foot">Finisce nel file dei progressi, insieme al Dopo più adatto: ricaricando il file il confronto c'è già, anche senza le foto.</p>`;
   const sync = () => {
     $("#startBody").querySelectorAll("[data-start]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.start === startPick));
     $("#startOk").disabled = !startPick;
@@ -3365,8 +3610,33 @@ startSheet.addEventListener("close", () => { startQueue = []; });
 
 // ---- foto salvate: elenco con il peso, per toglierne qualcuna (anche quando il file dei progressi diventa grande)
 const FILE_WARN_BYTES = 50e6; // oltre i 50 MB il file è scomodo da salvare e da spostare
+// Su Telegram il bot riscarica file fino a 20 MB: un po' di margine
+const TG_FILE_MAX = 19e6;
+const fileMax = () => TG ? TG_FILE_MAX : FILE_WARN_BYTES;
 const b64Size = (n) => Math.ceil(n / 3) * 4 + 300; // immagine dentro il file, con nome e data
 const mbText = (n) => n < 1e5 ? "meno di 0,1 MB" : `${num(n / 1e6, n < 1e7 ? 1 : 0)} MB`;
+// Su Telegram le foto vanno nel file ridotte (lato lungo 1000 px): così ce ne stanno un centinaio sotto TG_FILE_MAX.
+// I punti salvati si riscalano da soli quando la foto si riapre (dims)
+const TG_SIDE = 1000;
+async function shrinkImage(blob) {
+  const img = await createImageBitmap(blob);
+  const L = Math.max(img.width, img.height);
+  if (L <= TG_SIDE && blob.size <= 250e3) { img.close(); return blob; }
+  const s = Math.min(1, TG_SIDE / L), c = document.createElement("canvas");
+  c.width = Math.round(img.width * s);
+  c.height = Math.round(img.height * s);
+  c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+  img.close();
+  const out = await canvasBlob(c, "image/jpeg", 0.8);
+  c.width = c.height = 0;
+  return out;
+}
+// Le immagini che finiscono nel file dei progressi
+async function imagesForFile() {
+  const items = await savedImages();
+  if (TG) for (const it of items) it.blob = await shrinkImage(it.blob).catch(() => it.blob);
+  return items;
+}
 // Tutte le immagini salvate, una per foto: { key, name, date, stamp, blob, ref, kept }
 async function savedImages() {
   const refs = await allRecords("refs").catch(() => []);
@@ -3391,9 +3661,15 @@ async function removeSaved(items) {
       }
       kept.tappe = kept.tappe.filter((x) => x !== it.key);
     }
+    // Su Telegram ogni foto aperta resta salvata: per toglierla dal file la si toglie dall'elenco
+    if (TG) {
+      const gone = new Set(items.map((it) => it.key));
+      state.photos = state.photos.filter((q) => !gone.has(q.key));
+      if (state.selected && gone.has(state.selected.key)) state.selected = sorted()[0] || null;
+    }
     saveKeptRoles();
     await updateKept(); // toglie le immagini che non servono più
-  } catch { toast("Non riesco a togliere le foto dal browser"); }
+  } catch { toast("Non riesco a togliere le foto"); }
   refresh();
 }
 // mode "manage": dalle impostazioni. mode "export": il file supera FILE_WARN_BYTES (total, in byte).
@@ -3404,7 +3680,7 @@ async function openKept(mode, total = 0, other = 0) {
   const poseOf = (key) => {
     const p = state.photos.find((q) => q.key === key);
     if (p) return p.pose;
-    try { return JSON.parse(localStorage.getItem(key))?.pose; } catch { return null; }
+    try { return JSON.parse(mem.getItem(key))?.pose; } catch { return null; }
   };
   const roles = (it) => {
     const pose = poseOf(it.key), xs = [];
@@ -3416,8 +3692,10 @@ async function openKept(mode, total = 0, other = 0) {
   };
   const sumAll = items.reduce((s, it) => s + it.blob.size, 0);
   $("#keptIntro").textContent = mode === "export"
-    ? `Il file dei progressi peserebbe circa ${mbText(total)}: oltre ${mbText(FILE_WARN_BYTES)} è scomodo da salvare e da spostare. Togli qualche foto salvata, o tienile tutte e salva lo stesso.`
-    : `${countOf(items.length, "foto salvata", "foto salvate")} in questo browser, ${mbText(sumAll)}. Finiscono anche nel file dei progressi.`;
+    ? TG
+      ? `Il file dei progressi peserebbe circa ${mbText(total)}: oltre ${mbText(TG_FILE_MAX)} il bot non riesce più a riaprirlo. Togli qualche foto, o tienile tutte e salva lo stesso.`
+      : `Il file dei progressi peserebbe circa ${mbText(total)}: oltre ${mbText(FILE_WARN_BYTES)} è scomodo da salvare e da spostare. Togli qualche foto salvata, o tienile tutte e salva lo stesso.`
+    : `${countOf(items.length, "foto tenuta", "foto tenute")}, ${mbText(sumAll)}: finiscono nel file dei progressi.`;
   $("#keptBody").innerHTML = items.length ? `<ul class="kept-list">${items.map((it, i) => {
     const fixed = keptFixed(it.key);
     return `<li><label class="${fixed ? "fixed" : ""}"${fixed ? ' title="Serve al confronto: per toglierla scegli un\'altra foto di partenza"' : ""}>
@@ -3434,7 +3712,7 @@ async function openKept(mode, total = 0, other = 0) {
     const sel = picked(), freed = sel.reduce((s, it) => s + b64Size(it.blob.size), 0);
     if ($("#keptRemove")) $("#keptRemove").disabled = !sel.length;
     if ($("#keptTotal")) $("#keptTotal").textContent = sel.length
-      ? `${countOf(sel.length, "foto selezionata", "foto selezionate")}: le tolgo da questo browser e dal file. ${mode === "export" ? `Il file peserà circa ${mbText(Math.max(0, total - freed))}.` : `Liberi ${mbText(freed)}.`}`
+      ? `${countOf(sel.length, "foto selezionata", "foto selezionate")}: le tolgo dal file. ${mode === "export" ? `Il file peserà circa ${mbText(Math.max(0, total - freed))}.` : `Liberi ${mbText(freed)}.`}`
       : mode === "export" ? `Le foto salvate pesano ${mbText(total - other)} del file.` : "";
   };
   dlg.querySelectorAll("[data-i]").forEach((c) => c.addEventListener("change", update));
@@ -4341,7 +4619,7 @@ function renderGuide() {
     if (sug) drawGuide(sug.p, "Proposta di riferimento");
     $("#guideFrame").hidden = !sug;
     box.innerHTML = poseSelect + `<div class="section"><span class="section-title">Riferimento</span>`
-      + `<p class="note">La foto da rifare uguale ogni volta. Resta salvata solo in questo browser, anche quando chiudi la pagina.</p>`
+      + `<p class="note">La foto da rifare uguale ogni volta. Finisce nel file dei progressi: caricandolo la ritrovi.</p>`
       + (sug ? `<div class="suggest">${thumb(sug.p)}<div class="txt"><b>${esc(labelOf(sug.p))}</b><span class="sub">${esc(sug.why)}</span></div>`
         + `<button class="btn primary" id="useSuggest">Usa questa</button></div>` : `<p class="note">Aggiungi qualche foto: ti propongo io la migliore.</p>`)
       + `</div>`;
@@ -4349,24 +4627,11 @@ function renderGuide() {
   } else {
     drawGuide(ref, `Riferimento · ${labelOf(ref)}`);
     $("#guideFrame").hidden = false;
-    const f = framing(ref);
-    const steps = [
-      "<b>Stesso posto</b>: stesso specchio, stessa ora del giorno.",
-      f && `<b>Distanza</b>: le spalle prendono ${fracWords(f.width)} della larghezza della foto (${pctOf(f.width)}).`,
-      f && f.yFrom !== "shoulders" && `<b>Altezza</b>: ${Y_LABEL[f.yFrom]} ${f.yFrom === "neck" ? "sta" : "stanno"} al ${pctOf(f.y)} dall'alto, ${fracWords(f.y)} della foto.`,
-      settings.framing === "full"
-        ? `<b>Inquadratura</b>: dalla testa ai piedi${f?.feet ? `, i piedi al ${pctOf(f.feet)} dall'alto` : ""}.`
-        : "<b>Inquadratura</b>: dalla testa ai fianchi, sempre uguale.",
-      "<b>Telefono</b>: davanti al viso, dritto, fotocamera 1× e griglia accesa. Foto vera, non screenshot.",
-      f?.hand ? `<b>Altra mano</b>: nel riferimento è sul${f.hand === "belly" ? "la pancia" : " petto"}. Meglio lungo il fianco: se cambi, scegli un nuovo riferimento.`
-        : "<b>Altra mano</b>: lungo il fianco, lontana da petto e pancia.",
-      "<b>Busto</b>: dritto verso lo specchio, spalle e pancia rilassate.",
-      "<b>Quando</b>: a freddo, non subito dopo l'allenamento.",
-    ].filter(Boolean);
+    const steps = guideSteps(ref);
     const last = state.photos.filter((p) => p.pose === k && p !== ref && p.lm?.length).sort(byDate).pop();
     const tips = last ? coachTips(last, ref) : null;
     box.innerHTML = poseSelect
-      + `<div class="section"><span class="section-title">Riferimento</span><div class="suggest">${thumb(ref)}<div class="txt"><b>${esc(labelOf(ref))}</b><span class="sub">Salvata solo in questo browser</span></div>`
+      + `<div class="section"><span class="section-title">Riferimento</span><div class="suggest">${thumb(ref)}<div class="txt"><b>${esc(labelOf(ref))}</b><span class="sub">Nel file dei progressi</span></div>`
       + `<button class="btn ghost" id="openRef">Apri</button></div></div>`
       + `<div class="section"><span class="section-title">Come rifare la foto</span><ol class="steps-guide">${steps.map((t) => `<li>${t}</li>`).join("")}</ol>`
       + `<button class="btn primary" id="guideDownload"><svg class="icon"><use href="#i-download"/></svg>Scarica la guida</button>`
@@ -4382,6 +4647,24 @@ function renderGuide() {
     });
   }
   $("#guidePose")?.addEventListener("change", (e) => { state.guidePose = e.target.value; refresh(); });
+}
+
+// Come rifare la foto, coi numeri del riferimento. Righe in HTML (solo <b>): servono anche al promemoria di Telegram
+function guideSteps(ref) {
+  const f = framing(ref);
+  return [
+    "<b>Stesso posto</b>: stesso specchio, stessa ora del giorno.",
+    f && `<b>Distanza</b>: le spalle prendono ${fracWords(f.width)} della larghezza della foto (${pctOf(f.width)}).`,
+    f && f.yFrom !== "shoulders" && `<b>Altezza</b>: ${Y_LABEL[f.yFrom]} ${f.yFrom === "neck" ? "sta" : "stanno"} al ${pctOf(f.y)} dall'alto, ${fracWords(f.y)} della foto.`,
+    settings.framing === "full"
+      ? `<b>Inquadratura</b>: dalla testa ai piedi${f?.feet ? `, i piedi al ${pctOf(f.feet)} dall'alto` : ""}.`
+      : "<b>Inquadratura</b>: dalla testa ai fianchi, sempre uguale.",
+    "<b>Telefono</b>: davanti al viso, dritto, fotocamera 1× e griglia accesa. Foto vera, non screenshot.",
+    f?.hand ? `<b>Altra mano</b>: nel riferimento è sul${f.hand === "belly" ? "la pancia" : " petto"}. Meglio lungo il fianco: se cambi, scegli un nuovo riferimento.`
+      : "<b>Altra mano</b>: lungo il fianco, lontana da petto e pancia.",
+    "<b>Busto</b>: dritto verso lo specchio, spalle e pancia rilassate.",
+    "<b>Quando</b>: a freddo, non subito dopo l'allenamento.",
+  ].filter(Boolean);
 }
 
 // ------------------------------------------------------------------ impostazioni
@@ -4419,7 +4702,7 @@ function openSettings(first = false) {
     const refocus = f?.dataset?.id ? `[data-pose="${f.dataset.pose}"][data-id="${f.dataset.id}"]` : f?.name ? `input[name="${f.name}"][value="${f.value}"]` : f?.id ? `#${f.id}` : null;
     queueMicrotask(() => { if (refocus) dlg.querySelector(refocus)?.focus({ preventScroll: true }); });
     const nMeas = POSE_KEYS_ALL.reduce((s, k) => s + (draft.measures[k] || []).filter((id) => !MEASURES[k][id]?.full || draft.framing === "full").length, 0);
-    const t = +localStorage.getItem(LAST_EXPORT_KEY), days = t ? Math.floor((Date.now() - t) / 864e5) : -1;
+    const t = +mem.getItem(LAST_EXPORT_KEY), days = t ? Math.floor((Date.now() - t) / 864e5) : -1;
     dlg.querySelector(".body").innerHTML = `
       ${sec("who", "Chi usa l'app", WHO[draft.who], radios("who", WHO, draft.who, WHO_SUB))}
       ${sec("framing", "Come fai le foto", FRAMINGS[draft.framing].label, radios("framing", FRAMINGS, draft.framing))}
@@ -4434,16 +4717,21 @@ function openSettings(first = false) {
         <button type="button" class="link" id="presetBtn">Ripristina quelle consigliate</button>`)}
       ${sec("definition", "Definizione", draft.definition ? "Accesa" : "Spenta",
         `<label class="switch"><span>Stima la definizione muscolare<small>Ombre fra i muscoli di petto, addome e schiena. Spegnila se fai le foto con la maglietta.</small></span><input type="checkbox" id="defInput" ${draft.definition ? "checked" : ""}></label>`)}
-      ${sec("data", "I tuoi progressi", days < 0 ? "Mai salvati in un file" : days === 0 ? "Salvati oggi" : days === 1 ? "Salvati ieri" : `Salvati ${days} giorni fa`, `
-        <p class="note">Punti, misure, diario e impostazioni stanno solo in questo browser. Salvali in un file per non perderli o per passarli su un altro dispositivo. Nel file ci sono anche le foto salvate (riferimenti, partenza e Dopo); le altre no: quando apri il file, aggiungile di nuovo e i punti tornano.${MOBILE ? " Su iPhone Safari cancella i dati dei siti che non apri da una settimana: aggiungi la pagina alla schermata Home o salva spesso." : ""}</p>
-        <p class="note" id="keptLine">Foto salvate: …</p>
+      ${sec("data", "I tuoi progressi", dirty ? "Da salvare" : "Salvati nel file", `
+        <p class="note">${TG
+          ? "Sei dentro Telegram: Salva manda il file dei progressi nella chat col bot, cifrato con la password, con tutte le foto (ridotte). Senza password non si apre. Ogni salvataggio sparisce dalla chat dopo 4 ore, tranne l'ultimo e quelli che conservi (pulsante Conserva). Riaprendo la pagina dalla chat, anche da un altro telefono, riparti da lì."
+          : "Il browser non tiene niente: punti, misure, diario e impostazioni restano solo nel file dei progressi, cifrato con la password che hai scritto all'apertura. Salvalo prima di chiudere la pagina, e la prossima volta caricalo. Nel file ci sono anche le foto tenute (riferimenti, partenza e Dopo); le altre no: quando apri il file, aggiungile di nuovo e i punti tornano."}</p>
+        <p class="note" id="keptLine">Foto tenute: …</p>
         <div class="data-actions">
           <button type="button" class="btn" id="exportBtn"><svg class="icon"><use href="#i-download"/></svg>Salva i progressi</button>
           <button type="button" class="btn ghost" id="importBtn">Carica un file</button>
         </div>
-        <p class="note">${esc(lastExportText())}${MOBILE ? " Su iPhone salvalo in File › Sul mio iPhone: in iCloud Drive finirebbe online." : ""}</p>`)}
-      ${sec("privacy", "Privacy", "Tutto resta qui",
-        `<p class="note">Le foto non lasciano mai questo dispositivo: si aprono e si analizzano qui. Niente account, cookie, statistiche o tracciamento. La pagina è bloccata dal browser e non può collegarsi ad altri siti${location.protocol === "file:" ? ", tranne i due da cui scarica le librerie" : ""}.</p>`)}`;
+        <p class="note">${esc(lastExportText())}${MOBILE && !TG ? " Su iPhone salvalo in File › Sul mio iPhone: in iCloud Drive finirebbe online." : ""}</p>`)}
+      ${TG
+        ? sec("privacy", "Privacy", "Chat col bot",
+          `<p class="note">Su Telegram foto e file dei progressi stanno nella tua chat col bot, sui server di Telegram. Le foto che mandi in chat non sono cifrate (le chat coi bot non lo sono): quando salvi, il bot toglie quelle già prese (se sono di meno di 48 ore fa) e restano solo nel file dei progressi, che è cifrato qui sul telefono con la password. Le foto si analizzano qui e qui non si salva niente.</p>`)
+        : sec("privacy", "Privacy", "Niente esce, niente resta",
+          `<p class="note">Le foto non lasciano mai questo dispositivo: si aprono e si analizzano qui. Il browser non tiene niente: chiudendo la pagina sparisce tutto, resta solo il file dei progressi che salvi tu, cifrato con la password. Niente account, cookie, statistiche o tracciamento. La pagina è bloccata dal browser e non può collegarsi ad altri siti${location.protocol === "file:" ? ", tranne i due da cui scarica le librerie" : ""}.</p>`)}`;
     dlg.querySelectorAll("[data-acc]").forEach((d) => d.addEventListener("toggle", () => { if (d.open) open.add(d.dataset.acc); else open.delete(d.dataset.acc); }));
     dlg.querySelectorAll('input[name="who"]').forEach((i) => i.addEventListener("change", () => {
       draft.who = i.value;
@@ -4470,14 +4758,14 @@ function openSettings(first = false) {
     $("#presetBtn").addEventListener("click", () => { draft.measures = presetMeasures(draft.who, draft.framing); render(); });
     $("#defInput").addEventListener("change", (e) => { draft.definition = e.target.checked; render(); });
     $("#exportBtn").addEventListener("click", async () => { await saveProgress(); render(); });
-    // Quante foto salvate e quanto pesano: si legge dal browser, poi si scrive (se la finestra è ancora lì)
+    // Quante foto tenute e quanto pesano: si legge, poi si scrive (se la finestra è ancora lì)
     savedImages().then((items) => {
       const line = $("#keptLine");
       if (!line || !dlg.open) return;
       const size = items.reduce((s, it) => s + b64Size(it.blob.size), 0);
       line.innerHTML = items.length
-        ? `Foto salvate: ${esc(countOf(items.length, "foto", "foto"))}, circa ${esc(mbText(size))} nel file. <button type="button" class="link" id="keptManage">Vedi e togli</button>`
-        : "Nessuna foto salvata: la stella e la foto di partenza le salvano qui.";
+        ? `Foto tenute: ${esc(countOf(items.length, "foto", "foto"))}, circa ${esc(mbText(size))} nel file. <button type="button" class="link" id="keptManage">Vedi e togli</button>`
+        : "Nessuna foto tenuta: la stella e la foto di partenza le mettono nel file.";
       $("#keptManage")?.addEventListener("click", async () => { await openKept("manage"); render(); });
     });
     // Un file caricato porta anche le sue impostazioni: la finestra si chiude senza applicare le scelte fatte qui
@@ -4486,8 +4774,11 @@ function openSettings(first = false) {
   dlg.querySelector(".body").classList.add("accs");
   dlg.querySelector("h2").textContent = first ? "Prima di iniziare" : "Impostazioni";
   dlg.querySelector(".intro").textContent = first
-    ? "Così misuro le cose giuste per te. Puoi cambiare tutto quando vuoi dalla rotella in alto."
+    ? "Così misuro le cose giuste per te. Hai già un file dei progressi? Caricalo: ci sono anche le impostazioni."
     : "Valgono per tutte le foto. Le foto e i punti già messi restano.";
+  // La prima volta (cioè a ogni apertura: il browser non ricorda niente) si può partire dal file
+  $("#settingsImport").hidden = !first || !!TG;
+  $("#settingsImport").onclick = () => pickImport(() => { dlg.returnValue = ""; dlg.onclose = null; dlg.close(); });
   $("#settingsCancel").hidden = first;
   $("#settingsSave").textContent = first ? "Inizia" : "Salva";
   render();
@@ -4499,7 +4790,7 @@ function openSettings(first = false) {
 function applySettings(next) {
   const changedPoses = Object.keys(POINT_CHOICES).filter((k) => next[POINT_CHOICES[k].key] !== settings[POINT_CHOICES[k].key]);
   settings = next;
-  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* spazio pieno */ }
+  try { mem.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* spazio pieno */ }
   buildPoses();
   let redo = 0;
   for (const k of changedPoses) {
@@ -4539,10 +4830,10 @@ const isPt = (q) => Array.isArray(q) && q.length >= 2 && q.slice(0, 3).every((v)
 
 function savedPhotoEntries() {
   const out = {};
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i);
+  for (let i = 0; i < mem.length; i++) {
+    const k = mem.key(i);
     if (!validKey(k)) continue;
-    try { out[k] = JSON.parse(localStorage.getItem(k)); } catch { /* rovinato */ }
+    try { out[k] = JSON.parse(mem.getItem(k)); } catch { /* rovinato */ }
   }
   return out;
 }
@@ -4550,14 +4841,14 @@ function savedPhotoEntries() {
 async function exportProgress() {
   const photos = savedPhotoEntries();
   const base = { app: "fitprogress", version: 1, exportedAt: new Date().toISOString(), settings, photos, diary, keptRoles: kept };
-  let items = await savedImages();
+  let items = await imagesForFile();
   // Peso del file prima di scriverlo: se è troppo, scegli tu cosa togliere
   const other = JSON.stringify(base).length;
   const total = other + items.reduce((s, it) => s + b64Size(it.blob.size), 0);
-  if (total > FILE_WARN_BYTES) {
+  if (total > fileMax()) {
     const r = await openKept("export", total, other);
     if (r === "cancel") return;
-    if (r === "removed") items = await savedImages();
+    if (r === "removed") items = await imagesForFile();
   }
   const meta = (it) => ({ key: it.key, name: it.name, date: it.date || "", stamp: it.stamp || "" });
   const refs = [], keptOut = [];
@@ -4568,12 +4859,16 @@ async function exportProgress() {
     }
   } catch { toast("Non riesco a leggere le foto salvate"); return; }
   const json = JSON.stringify({ ...base, refs, kept: keptOut });
-  const file = new File([json], `fitprogress-${todayISO()}.json`, { type: "application/json" });
   const n = Object.keys(photos).length;
   const what = savedWhat(n, diary.length, items.length);
+  if (TG) return tgSave(json, what);
+  // Cifrato con la password (vedi PW)
+  if (!(await confirmPassword())) return false;
+  const file = new File([await sealWithPassword(json)], `fitprogress-${todayISO()}.fitprogress`, { type: "application/octet-stream" });
   // Salvato davvero (condiviso o scaricato): solo allora si segna e si dice
   const done = () => {
-    try { localStorage.setItem(LAST_EXPORT_KEY, String(Date.now())); } catch { /* spazio pieno */ }
+    mem.setItem(LAST_EXPORT_KEY, String(Date.now()));
+    markSaved();
     toast("Salvataggio riuscito");
     return true;
   };
@@ -4631,10 +4926,9 @@ async function saveProgress() {
     updateSaveBtn();
   }
 }
-// Il suggerimento del pulsante dice quando hai salvato l'ultima volta
+// Il suggerimento del pulsante dice se c'è qualcosa da salvare
 function updateSaveBtn() {
-  const t = +localStorage.getItem(LAST_EXPORT_KEY), days = t ? Math.floor((Date.now() - t) / 864e5) : -1;
-  $("#saveBtn").title = days < 0 ? "Salva i progressi in un file: non l'hai ancora fatto" : `Salva i progressi in un file (ultimo salvataggio: ${days === 0 ? "oggi" : days === 1 ? "ieri" : `${days} giorni fa`})`;
+  $("#saveBtn").title = `${TG ? "Salva i progressi nella chat" : "Salva i progressi in un file"}. ${lastExportText()}`;
 }
 $("#saveBtn").addEventListener("click", saveProgress);
 // "12 foto (3 con l'immagine) e 5 misurazioni": le foto si dicono sempre, tranne se c'è solo il diario
@@ -4686,8 +4980,9 @@ function cleanPhoto(v) {
 }
 
 async function importProgress(file) {
-  let data = null;
-  try { data = JSON.parse(await file.text()); } catch { /* non è JSON */ }
+  let data;
+  try { data = await openProgressFile(await file.arrayBuffer()); } catch { /* non è un file dei progressi */ }
+  if (data === null) return false; // annullato: era cifrato con un'altra password
   if (!["fitprogress", "progressi"].includes(data?.app) || !data.photos || typeof data.photos !== "object") {
     toast("Questo file non è un salvataggio di FitProgress");
     return false;
@@ -4695,24 +4990,30 @@ async function importProgress(file) {
   busyStart("Carico il file dei progressi…");
   try { return await importData(data); } finally { busyEnd(); }
 }
-async function importData(data) {
+// Aprire un file non è una modifica: quello che c'è qui è uguale al file (resta da salvare solo se lo era già).
+// quietToast: niente messaggio alla fine (lo dice chi chiama)
+async function importData(data, opts = {}) {
+  quiet++;
+  try { return await openProgressData(data, opts); } finally { quiet--; syncDirty(); }
+}
+async function openProgressData(data, { quietToast = false } = {}) {
   settings = cleanSettings(data.settings);
-  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* spazio pieno */ }
+  try { mem.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* spazio pieno */ }
   buildPoses();
   let n = 0;
   for (const [k, v] of Object.entries(data.photos)) {
     const c = cleanPhoto(v);
     if (!c || !validKey(k)) continue;
-    try { localStorage.setItem(k, JSON.stringify(c)); n++; } catch { /* spazio pieno */ }
+    try { mem.setItem(k, JSON.stringify(c)); n++; } catch { /* spazio pieno */ }
   }
-  // Diario: le misurazioni del file si aggiungono a quelle di questo browser; stessa data, vince il file
+  // Diario: le misurazioni del file si aggiungono a quelle già aperte; stessa data, vince il file
   const fileDiary = cleanDiary(data.diary);
   if (fileDiary.length) {
     const before = diary;
     diary = cleanDiary([...diary, ...fileDiary]);
     if (!saveDiary()) diary = before;
   }
-  // Foto salvate: quelle del file prendono il posto di quelle di questo browser (riferimenti e foto del confronto
+  // Foto tenute: quelle del file prendono il posto di quelle già aperte (riferimenti e foto del confronto
   // ognuno per conto suo: un file senza foto del confronto lascia quelle che ci sono)
   const isImage = (s) => typeof s === "string" && /^data:image\/(jpeg|png|webp);base64,/.test(s);
   const allRefs = (Array.isArray(data.refs) ? data.refs : []).filter((r) => validKey(r?.key) && isImage(r.image));
@@ -4726,10 +5027,10 @@ async function importData(data) {
   for (const [store, list] of [["refs", refs], ["kept", keptIn]]) {
     if (!list.length) continue;
     try {
-      // Prima si leggono tutte: se un'immagine è rovinata, le foto del browser restano
+      // Prima si leggono tutte: se un'immagine è rovinata, quelle già aperte restano
       const recs = [];
       for (const [i, r] of list.entries()) {
-        busyStep("Salvo le foto del file in questo browser", i + 1, list.length);
+        busyStep("Apro le foto del file", i + 1, list.length);
         recs.push(await makeRecord(meta(r), await (await fetch(r.image)).blob()));
       }
       await idb("readwrite", (st) => { st.clear(); recs.forEach((rec) => st.put(rec)); }, store);
@@ -4757,7 +5058,8 @@ async function importData(data) {
   refresh();
   processQueue();
   const images = new Set([...refs, ...keptIn].map((r) => r.key)).size;
-  toast(notSaved ? `Caricati i progressi di ${savedWhat(n, fileDiary.length, 0)}, ma non riesco a salvare le foto del file in questo browser.`
+  if (quietToast) return true;
+  toast(notSaved ? `Caricati i progressi di ${savedWhat(n, fileDiary.length, 0)}, ma non riesco ad aprire le foto del file.`
     : `Caricati i progressi di ${savedWhat(n, fileDiary.length, images)}.${n > images ? " Trascina le altre foto: i punti tornano da soli." : ""}`);
   return true;
 }
@@ -4774,16 +5076,195 @@ $("#importInput").addEventListener("change", async (e) => {
 const pickImport = (then) => { afterImport = then; $("#importInput").click(); };
 $("#importLink").addEventListener("click", () => pickImport(null));
 
+// Il browser non ricorda niente: conta solo se quello che c'è qui è già nel file
 function lastExportText() {
-  const t = +localStorage.getItem(LAST_EXPORT_KEY);
-  if (!t) return "Non hai ancora salvato i progressi in un file.";
-  const days = Math.floor((Date.now() - t) / 864e5);
-  return `Ultimo salvataggio: ${days === 0 ? "oggi" : days === 1 ? "ieri" : `${days} giorni fa`}.`;
+  const t = +mem.getItem(LAST_EXPORT_KEY);
+  const at = t ? new Date(t).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }) : "";
+  if (dirty) return `${at ? `Salvato alle ${at}, ma poi` : "Finora"} hai cambiato qualcosa: salva prima di chiudere la pagina, se no si perde.`;
+  return at ? `Tutto salvato alle ${at}.` : "Niente da salvare.";
+}
+
+// Chiudendo la pagina con modifiche non salvate il browser chiede conferma (dentro Telegram lo fa Telegram).
+// Il pulsante Salva ha un pallino finché c'è qualcosa da salvare
+function syncDirty() {
+  $("#saveBtn").classList.toggle("dirty", dirty);
+  if (TG) window.Telegram?.WebApp?.[dirty ? "enableClosingConfirmation" : "disableClosingConfirmation"]?.();
+  updateSaveBtn();
+}
+document.addEventListener("fp-dirty", syncDirty);
+window.addEventListener("beforeunload", (e) => {
+  if (!dirty) return;
+  e.preventDefault();
+  e.returnValue = "";
+});
+// Il file salvato ha tutto: da qui in poi niente da salvare (fino alla prossima modifica)
+function markSaved() {
+  dirty = false;
+  syncDirty();
+}
+
+// Versioni di prima tenevano tutto nel browser: se c'è ancora qualcosa si apre (come un file dei progressi),
+// poi si toglie dal browser. Resta da salvare nel file. Risponde se c'era qualcosa
+async function migrateLegacy() {
+  let data = null;
+  try { data = await takeLegacy(); } catch { /* niente da riprendere */ }
+  if (!data) { await clearLegacy(); return false; }
+  busyStart("Riprendo i dati salvati nel browser…");
+  try { await importData(data, { quietToast: true }); } catch { /* quello che si è aperto resta */ } finally { busyEnd(); }
+  await clearLegacy();
+  dirty = true;
+  syncDirty();
+  toast("Ho tolto dal browser i dati che c'erano: adesso li hai qui. Salva il file dei progressi per tenerli.");
+  return true;
+}
+
+// ------------------------------------------------------------------ Telegram: la chat col bot (vedi TG, in cima)
+
+const b64url = (s) => btoa(String.fromCharCode(...new TextEncoder().encode(s))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const b64uBytes = (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
+
+// Il bot risponde sullo stesso indirizzo della pagina. Coi dati firmati da Telegram (e l'accesso: il codice
+// d'accesso scritto al bot) dà una sessione breve e la chiave del file dei progressi, tenute solo in memoria.
+// Sessione scaduta (2 ore senza usarla, 12 in tutto): se ne chiede un'altra e si riprova, il lavoro non si perde
+async function tgApi(path, opts = {}, retry = true) {
+  if (!TG.session) await tgLogin();
+  const res = await fetch(`api/${path}`, { ...opts, credentials: "omit", headers: { Authorization: `Bearer ${TG.session}`, ...opts.headers } });
+  if (res.status === 401 && retry) {
+    TG.session = null;
+    return tgApi(path, opts, false);
+  }
+  if (!res.ok) throw new Error(`api ${res.status}`);
+  return res;
+}
+// Accesso: la password (la stessa del codice d'accesso del bot) la controlla il bot. Resta in memoria: quando la
+// sessione scade se ne apre un'altra da sola
+let loginWait = null;
+function tgLogin() {
+  loginWait ??= (async () => {
+    try {
+      const login = async (pw) => {
+        const res = await fetch("api/login", { method: "POST", credentials: "omit", headers: { Authorization: `tma ${TG.initData}`, "Content-Type": "application/json" }, body: JSON.stringify({ code: pw }) });
+        const r = await res.json().catch(() => ({}));
+        if (res.ok && r.token) {
+          TG.session = r.token;
+          if (r.fileKey) TG.fileKey = await crypto.subtle.importKey("raw", b64uBytes(r.fileKey), "AES-GCM", false, ["decrypt"]);
+          PW.value = pw;
+          PW.checked = true;
+          return null;
+        }
+        if (r.error === "password") return r.left ? `Password sbagliata. ${r.left === 1 ? "Ancora 1 tentativo" : `Ancora ${r.left} tentativi`} per oggi.` : "Troppi tentativi per oggi. Riprova domani.";
+        if (res.status === 429) return "Troppi tentativi per oggi. Riprova domani.";
+        throw new Error(res.status === 403 ? "invite" : "auth");
+      };
+      if (PW.value && (await login(PW.value)) === null) return;
+      const pw = await askPassword({ intro: "Scrivi la password che ti hanno dato (la stessa del codice per il bot): apre e cifra i tuoi progressi.", check: login });
+      if (pw === null) throw new Error("auth");
+    } finally { loginWait = null; }
+  })();
+  return loginWait;
+}
+
+// Posa dalla didascalia della foto ("fronte", "lato", "schiena"): se c'è, vale come scelta tua
+function poseFromCaption(c) {
+  if (/\b(fronte|davanti|front)/i.test(c)) return "front";
+  if (/\b(lato|fianco|profilo|side)/i.test(c)) return "side";
+  if (/\b(schiena|dietro|retro|back)/i.test(c)) return "back";
+  return null;
+}
+const isoLocal = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+
+// All'apertura: script di Telegram (pronto, a tutto schermo), accesso, poi i progressi della chat
+async function tgStart() {
+  const wa = await new Promise((resolve) => {
+    const s = document.createElement("script");
+    s.src = "https://telegram.org/js/telegram-web-app.js";
+    s.onload = () => resolve(window.Telegram?.WebApp || null);
+    s.onerror = () => resolve(null);
+    document.head.append(s);
+  });
+  if (wa) {
+    wa.ready();
+    wa.expand();
+    if (wa.initData) TG.initData = wa.initData;
+  }
+  try { await tgLogin(); } catch (e) {
+    toast(e.message === "invite" ? "Prima scrivi al bot il codice d'accesso, poi riapri la pagina dalla chat."
+      : e.message === "limit" ? "Oggi il bot ha già lavorato troppo per te: riprova domani." : "Apri la pagina dal pulsante nella chat col bot.");
+    return;
+  }
+  await tgSync();
+  if (!loadSettings()) openSettings(true);
+}
+// L'ultimo file dei progressi della chat (il browser non tiene niente: si riparte sempre da lì), poi foto e diario arrivati in chat
+async function tgSync() {
+  busyStart("Prendo i progressi dalla chat…");
+  try {
+    const st = await (await tgApi("state")).json();
+    if (st.json) {
+      let data = null;
+      try { data = await openProgressFile(await (await tgApi("file?json=1")).arrayBuffer()); } catch { toast("Non riesco ad aprire l'ultimo file dei progressi della chat."); }
+      if (["fitprogress", "progressi"].includes(data?.app) && data.photos && typeof data.photos === "object") await importData(data);
+    }
+    const entries = Array.isArray(st.diary) ? st.diary : [];
+    const nDiary = entries.length ? mergeDiary(entries) : 0;
+    if (entries.length && (nDiary || !entries.some((e) => validDate(e.date)))) TG.consumed.diary.push(...entries.map((e) => e.id));
+    const files = [];
+    for (const [i, ph] of (Array.isArray(st.photos) ? st.photos : []).entries()) {
+      busyStep("Prendo le foto dalla chat", i + 1, st.photos.length);
+      try {
+        const blob = await (await tgApi(`file?photo=${encodeURIComponent(ph.id)}`)).blob();
+        const name = `telegram-${isoLocal(ph.date * 1000)}-${ph.id}.jpg`;
+        const pose = poseFromCaption(ph.caption || "");
+        // La posa scelta nella didascalia: makePhoto la ritrova come se l'avessi scelta tu
+        if (pose) mem.setItem(`progressi:${name}:${blob.size}`, JSON.stringify({ pose, poseSet: "user" }));
+        files.push(new File([blob], name, { type: blob.type?.startsWith("image/") ? blob.type : "image/jpeg", lastModified: ph.date * 1000 }));
+      } catch { /* foto che non si scarica: si toglie lo stesso, se no torna sempre */ }
+      TG.consumed.photos.push(ph.id);
+    }
+    if (files.length) await addFiles(files);
+    const xs = [files.length && countOf(files.length, "foto", "foto"), nDiary && countOf(nDiary, "voce del diario", "voci del diario")].filter(Boolean);
+    if (xs.length) toast(`Dalla chat: ${xs.join(" e ")}. Quando hai finito tocca Salva.`);
+    if (nDiary) renderLog();
+  } catch {
+    toast("Non riesco a parlare col bot. Riapri la pagina dal pulsante nella chat.");
+  } finally {
+    busyEnd();
+  }
+}
+// Promemoria del bot: come rifare la foto, coi numeri del riferimento (di fronte, se c'è)
+function tgGuide() {
+  const k = POSE_KEYS.find((q) => refFor(q));
+  return k ? { pose: POSES[k].label, lines: guideSteps(refFor(k)) } : null;
+}
+// Salva su Telegram: il file, cifrato qui con la password, va al bot, che lo manda nella chat e toglie dalla chat le foto già prese
+async function tgSave(json, what) {
+  try {
+    const body = await sealWithPassword(json);
+    await tgApi("save", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "X-FP-Photos": TG.consumed.photos.join(","),
+        "X-FP-Diary": TG.consumed.diary.join(","),
+        "X-FP-Note": b64url(what),
+        "X-FP-Guide": b64url(JSON.stringify(tgGuide())),
+      },
+      body,
+    });
+    TG.consumed = { photos: [], diary: [] };
+    mem.setItem(LAST_EXPORT_KEY, String(Date.now()));
+    markSaved();
+    toast("Salvato nella chat, cifrato");
+    return true;
+  } catch {
+    toast("Non riesco a mandare il file nella chat. Riprova fra poco.");
+    return false;
+  }
 }
 
 // ------------------------------------------------------------------ diario: peso e misure col metro
 //
-// Una misurazione per giorno, anche senza foto. Sta in localStorage (una sola chiave, fuori da "progressi:"
+// Una misurazione per giorno, anche senza foto. Sta in memoria (una sola chiave, fuori da "progressi:"
 // che è per le foto) ed entra nel file dei progressi. Il modulo resta nella pagina: i ridisegni dovuti
 // alle foto che si allineano intanto non cancellano quello che stai scrivendo.
 
@@ -4803,6 +5284,13 @@ const DIARY_FIELDS = {
   calf: { name: "Polpaccio", unit: "cm", min: 10, max: 300 },
 };
 const DIARY_IDS = Object.keys(DIARY_FIELDS);
+// Testo libero, giorno per giorno: arrivano anche dal bot di Telegram ("gambe 60 min", "cena ieri: pizza")
+const DIARY_TEXT = {
+  workout: { name: "Allenamento", max: 200 },
+  meal: { name: "Pasto", max: 300 },
+};
+const DIARY_TEXT_IDS = Object.keys(DIARY_TEXT);
+const hasDiaryData = (e) => DIARY_IDS.some((id) => e[id] != null) || DIARY_TEXT_IDS.some((id) => e[id]);
 // 78 kg, 78,4 kg, 18,5%
 const fmtVal = (v) => num(v, 1).replace(/,0$/, "");
 const withUnit = (v, f) => f.unit === "%" ? `${fmtVal(v)}%` : `${fmtVal(v)} ${f.unit}`;
@@ -4818,25 +5306,52 @@ function cleanDiary(v) {
       const f = DIARY_FIELDS[id], n = e[id];
       if (typeof n === "number" && Number.isFinite(n) && n >= f.min && n <= f.max) out[id] = Math.round(n * 10) / 10;
     }
+    for (const id of DIARY_TEXT_IDS) if (typeof e[id] === "string" && e[id].trim()) out[id] = e[id].trim().slice(0, DIARY_TEXT[id].max);
     if (typeof e.note === "string" && e.note.trim()) out.note = e.note.trim().slice(0, 200);
-    if (DIARY_IDS.some((id) => out[id] != null)) byDate.set(e.date, out);
+    if (hasDiaryData(out)) byDate.set(e.date, out);
   }
   return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)).slice(-DIARY_MAX);
 }
 function loadDiary() {
-  try { return cleanDiary(JSON.parse(localStorage.getItem(DIARY_KEY))); } catch { return []; }
+  try { return cleanDiary(JSON.parse(mem.getItem(DIARY_KEY))); } catch { return []; }
 }
 function saveDiary() {
   try {
-    localStorage.setItem(DIARY_KEY, JSON.stringify(diary));
+    mem.setItem(DIARY_KEY, JSON.stringify(diary));
     return true;
   } catch {
-    toast("Non riesco a salvare: lo spazio del browser è pieno");
+    toast("Non riesco a segnare la misurazione");
     return false;
   }
 }
 let diary = loadDiary();
 let logEditing = null; // data della misurazione che stai modificando, o null se è nuova
+
+// Voci arrivate da fuori (il bot di Telegram), una per campo: [{ date, field, value }]. Le misure prendono il posto
+// di quelle del giorno, allenamento e pasto si aggiungono a quello che c'è già. Risponde quante voci ha preso
+function mergeDiary(items) {
+  const byDate = new Map(diary.map((e) => [e.date, { ...e }]));
+  let n = 0;
+  for (const { date, field, value } of items) {
+    if (!validDate(date)) continue;
+    const e = byDate.get(date) || { date };
+    if (DIARY_FIELDS[field]) {
+      const v = +value, f = DIARY_FIELDS[field];
+      if (!(v >= f.min && v <= f.max)) continue;
+      e[field] = Math.round(v * 10) / 10;
+    } else if (DIARY_TEXT[field] && typeof value === "string" && value.trim()) {
+      const t = value.trim();
+      if (!(e[field] || "").includes(t)) e[field] = e[field] ? `${e[field]} · ${t}` : t;
+    } else continue;
+    byDate.set(date, e);
+    n++;
+  }
+  if (!n) return 0;
+  const before = diary;
+  diary = cleanDiary([...byDate.values()]);
+  if (!saveDiary()) { diary = before; return 0; }
+  return n;
+}
 
 // Il modulo si costruisce una volta sola
 {
@@ -4859,20 +5374,20 @@ function showLogError(msg, bad = []) {
     logInput(bad[0]).focus();
   }
 }
-const logEls = () => [...DIARY_IDS.map((id) => [id, logInput(id)]), ["note", $("#logNote")]];
+const logEls = () => [...DIARY_IDS.map((id) => [id, logInput(id)]), ...DIARY_TEXT_IDS.map((id) => [id, logInput(id)]), ["note", $("#logNote")]];
 // Mette nel modulo i valori della misurazione e (null: vuoti). Quello che hai scritto tu resta: si cambiano
 // solo i campi uguali a com'erano stati caricati (data-loaded). clear: svuota tutto
 function fillLogForm(e, clear = false) {
   for (const [id, el] of logEls()) {
     if (!clear && el.value !== (el.dataset.loaded ?? "")) continue;
-    el.value = e?.[id] == null ? "" : id === "note" ? e.note : fmtVal(e[id]);
+    el.value = e?.[id] == null ? "" : DIARY_FIELDS[id] ? fmtVal(e[id]) : e[id];
     el.dataset.loaded = el.value;
   }
   if (DIARY_IDS.some((id) => !DIARY_FIELDS[id].main && logInput(id).value)) $("#logMore").open = true;
 }
 function updateLogHead() {
   $("#logFormTitle").textContent = logEditing ? `Misurazione del ${fmtDate(logEditing)}` : "Nuova misurazione";
-  $("#logFormSub").textContent = logEditing ? "Cambia i valori e aggiorna, o scegli un'altra data." : "Tutto facoltativo, tranne la data e almeno una misura.";
+  $("#logFormSub").textContent = logEditing ? "Cambia i valori e aggiorna, o scegli un'altra data." : "Tutto facoltativo, tranne la data e almeno una misura, l'allenamento o il pasto.";
   $("#logSave").textContent = logEditing ? "Aggiorna" : "Salva";
   $("#logDelete").hidden = !logEditing;
 }
@@ -4902,6 +5417,10 @@ function readLogForm() {
     if (n >= f.min && n <= f.max) entry[id] = Math.round(n * 10) / 10;
     else bad.push(id);
   }
+  for (const id of DIARY_TEXT_IDS) {
+    const t = logInput(id).value.trim().slice(0, DIARY_TEXT[id].max);
+    if (t) entry[id] = t;
+  }
   const note = $("#logNote").value.trim().slice(0, 200);
   if (note) entry.note = note;
   return { entry, bad };
@@ -4916,11 +5435,10 @@ $("#logForm").addEventListener("submit", (ev) => {
     showLogError(`Controlla ${bad.map((id) => { const f = DIARY_FIELDS[id]; return `${f.name.toLowerCase()} (fra ${f.min} e ${f.max} ${f.unit})`; }).join(", ")}.`, bad);
     return;
   }
-  if (!DIARY_IDS.some((id) => entry[id] != null)) { showLogError("Scrivi almeno una misura."); logInput("weight").focus(); return; }
+  if (!hasDiaryData(entry)) { showLogError("Scrivi almeno una misura, l'allenamento o il pasto."); logInput("weight").focus(); return; }
   const existed = diary.some((x) => x.date === entry.date), before = diary;
   diary = cleanDiary([...diary.filter((x) => x.date !== entry.date), entry]);
   if (!saveDiary()) { diary = before; return; }
-  navigator.storage?.persist?.().catch(() => {});
   toast(`${existed ? "Aggiornata" : "Salvata"} la misurazione del ${fmtDate(entry.date)}`);
   resetLogForm();
   renderLog();
@@ -4965,7 +5483,7 @@ function renderLogSummary() {
 
 function renderLogHistory() {
   const box = $("#logHistory");
-  const backup = `<p class="note">Il diario sta solo in questo browser. <button type="button" class="link" id="logBackup">Salvalo in un file</button> insieme ai progressi delle foto.</p>`;
+  const backup = `<p class="note">Il diario resta solo nel file dei progressi: <button type="button" class="link" id="logBackup">salvalo</button> prima di chiudere la pagina, insieme ai progressi delle foto.</p>`;
   if (!diary.length) { box.hidden = true; return; }
   box.hidden = false;
   const items = [...diary].reverse().map((e, i, all) => {
@@ -4979,7 +5497,7 @@ function renderLogHistory() {
     return `<li ${e.date === logEditing ? 'aria-current="true"' : ""}>
       <button type="button" class="log-entry" data-edit="${e.date}" aria-label="Modifica la misurazione del ${fmtDate(e.date)}">
         <span class="top"><span class="d">${fmtDate(e.date)}</span>${delta}</span>
-        <span class="vals">${esc(vals)}</span>${e.note ? `<span class="why">${esc(e.note)}</span>` : ""}
+        ${vals ? `<span class="vals">${esc(vals)}</span>` : ""}${DIARY_TEXT_IDS.filter((id) => e[id]).map((id) => `<span class="why">${esc(`${DIARY_TEXT[id].name}: ${e[id]}`)}</span>`).join("")}${e.note ? `<span class="why">${esc(e.note)}</span>` : ""}
       </button>
       <button type="button" class="btn ghost icon-only" data-edit="${e.date}" aria-label="Modifica la misurazione del ${fmtDate(e.date)}" title="Modifica"><svg class="icon"><use href="#i-pencil"/></svg></button>
       <button type="button" class="btn ghost icon-only" data-del="${e.date}" aria-label="Elimina la misurazione del ${fmtDate(e.date)}" title="Elimina"><svg class="icon"><use href="#i-x"/></svg></button>
@@ -5139,10 +5657,24 @@ window.addEventListener("drop", (e) => {
 
 // Sul telefono anche l'analisi parte chiusa: il riassunto dice già com'è andata, si apre a richiesta
 if (MOBILE) $("#accAnalysis").open = false;
+// Dentro Telegram le foto passano dalla chat col bot: i testi che dicono il contrario cambiano
+if (TG) {
+  $(".busy-note").textContent = "Le foto passano dalla tua chat col bot di Telegram.";
+  $(".drop p").textContent = "JPG, PNG, HEIC e screenshot. Oppure mandale al bot nella chat: le trovi qui.";
+}
 updateSaveBtn();
 refresh();
-loadSaved().then(() => { refresh(); processQueue(); });
-if (!settingsSaved) openSettings(true);
+// Il browser non tiene niente: si parte vuoti, dal file dei progressi (o dalla chat, su Telegram). Prima però si
+// riprende quello che le versioni di prima avevano lasciato nel browser, e lo si toglie da lì
+migrateLegacy().then(async (migrated) => {
+  refresh();
+  if (TG) await tgStart();
+  else {
+    await askPlatformPassword();
+    if (!migrated) openSettings(true);
+  }
+  processQueue();
+});
 </script>
 </body>
 </html>

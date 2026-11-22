@@ -12,3 +12,15 @@
 gym/
 
 .DS_Store
+
+# Appunti personali, non vanno nel repository
+APPUNTI.md
+
+# Bot Telegram: questi JSON servono (gli altri no, vedi sopra)
+!telegram/package.json
+!telegram/package-lock.json
+node_modules/
+telegram/public/
+telegram/.wrangler/
+telegram/.dev.vars
+.kiro/steering/note-personali.md

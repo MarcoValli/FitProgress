@@ -1,0 +1,30 @@
+# Bot Telegram di FitProgress: vedi README.md in questa cartella
+name = "fitprogress-bot"
+main = "src/worker.js"
+compatibility_date = "2026-09-01"
+workers_dev = true
+
+# La pagina (index.html e vendor/), copiata da npm run build
+[assets]
+directory = "./public"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "fitprogress"
+database_id = "88b853b6-37f5-4f27-9fda-d40b473da3bf" # da: npx wrangler d1 create fitprogress
+
+# Ogni 15 minuti: promemoria in scadenza, salvataggi non conservati da togliere, pulizia
+[triggers]
+crons = ["*/15 * * * *"]
+
+[vars]
+TIME_ZONE = "Europe/Rome"
+
+# Secret (non qui, con npx wrangler secret put NOME):
+#   BOT_TOKEN       il token di BotFather
+#   WEBHOOK_SECRET  codice a caso (openssl rand -hex 32): solo Telegram lo conosce
+#   MASTER_KEY      chiave principale, 64 cifre esadecimali (openssl rand -hex 32): da conservare, senza non si
+#                   riapre più nessun file dei progressi
+#   ALLOWED_IDS     ID Telegram ammessi sempre (il tuo), separati da virgole, oppure * per tutti. È un secret
+#                   perché così non sta nel repository e non cambia a ogni deploy
+#   ACCESS_CODE     codice d'accesso da dare ai tester: lo scrivono una volta al bot e sono dentro
