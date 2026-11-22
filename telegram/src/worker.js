@@ -1,8 +1,8 @@
 // Bot Telegram di FitProgress (Cloudflare Worker).
 //
 // - /telegram   messaggi da Telegram (webhook, solo col codice segreto WEBHOOK_SECRET): diario, foto, comandi, pulsanti
-// - /api/…      la pagina aperta dentro Telegram (Mini App): coi dati firmati da Telegram una sessione breve.
-//               Stato, file, salva
+// - /api/…      la pagina aperta dentro Telegram (Mini App): coi dati firmati da Telegram e la password (per ora la
+//               stessa del codice d'accesso: vedi APPUNTI.md) una sessione breve. Stato, file, salva
 // - /setup      collega il bot a questo Worker (webhook, comandi, pulsante del menu): una volta sola, con WEBHOOK_SECRET
 // - cron        ogni 15 minuti: promemoria per le foto, salvataggi non conservati da togliere (4 ore), pulizia
 // - il resto    la pagina stessa (index.html e vendor/, copiati in public/ da npm run build, con public/_headers)
@@ -15,7 +15,7 @@
 import { parseMessage, describeItem, NUM_FIELDS, TEXT_FIELDS } from "./parse.js";
 import { checkInitData, safeEqual } from "./auth.js";
 import { localDate, nextReminder, shortDate } from "./time.js";
-import { fileKey, sealText, openText, newToken, tokenHash, isFileFor, b64u, fromB64u, HEADER } from "./crypto.js";
+import { fileKey, sealText, openText, newToken, tokenHash, isFileFor, isPasswordFile, b64u, fromB64u, PP_HEADER } from "./crypto.js";
 
 const EVERY = 14, HOUR = 8; // promemoria: ogni 14 giorni alle 8
 const MAX_FILE = 20e6; // il bot riscarica file fino a 20 MB: più grandi non si potrebbero riaprire
@@ -91,9 +91,9 @@ async function fileHead(env, fileId, n) {
   return out.subarray(0, got);
 }
 
-// Il file dei progressi (già cifrato dalla pagina) va a Telegram mentre arriva, senza tenerlo tutto in memoria.
-// Prima di mandarlo si controlla che sia cifrato con la chiave di questo utente: se no non parte niente
-async function sendDocumentStream(env, chatId, body, length, filename, caption, keyId, markup) {
+// Il file dei progressi (già cifrato dalla pagina con la password) va a Telegram mentre arriva, senza tenerlo tutto
+// in memoria. Prima di mandarlo si controlla che sia un file cifrato (FPP1): se no non parte niente
+async function sendDocumentStream(env, chatId, body, length, filename, caption, markup) {
   const boundary = `fp${crypto.randomUUID().replace(/-/g, "")}`;
   const field = (name, value) => `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`;
   const head = enc.encode(field("chat_id", chatId) + field("caption", caption) + field("reply_markup", JSON.stringify(markup))
@@ -101,19 +101,19 @@ async function sendDocumentStream(env, chatId, body, length, filename, caption, 
   const tail = enc.encode(`\r\n--${boundary}--\r\n`);
   const { readable, writable } = new FixedLengthStream(head.length + length + tail.length);
   const w = writable.getWriter(), r = body.getReader();
-  // Primi byte: devono essere FPE1 e l'id della chiave
-  const first = new Uint8Array(HEADER);
+  // Primi byte: l'intestazione di un file cifrato con la password
+  const first = new Uint8Array(PP_HEADER);
   let got = 0;
   const pending = [];
-  while (got < HEADER) {
+  while (got < PP_HEADER) {
     const { done, value } = await r.read();
     if (done) break;
     pending.push(value);
-    const take = value.subarray(0, HEADER - got);
+    const take = value.subarray(0, PP_HEADER - got);
     first.set(take, got);
     got += take.length;
   }
-  if (got < HEADER || !isFileFor(first, keyId)) {
+  if (got < PP_HEADER || !isPasswordFile(first)) {
     r.cancel().catch(() => {});
     throw Object.assign(new Error("not-encrypted"), { status: 400 });
   }
@@ -202,7 +202,7 @@ const HELP = (u) => [
   "",
   `⏰ <b>Promemoria</b>: ogni ${u.every_days} giorni alle ${u.hour}${u.paused ? " (in pausa)" : ""}. /ogni 7 · /ora 19 · /pausa · /riprendi`,
   "",
-  "🔒 Il file dei progressi è cifrato: si apre solo da FitProgress, aperta da qui.",
+  "🔒 FitProgress si apre con la password che ti hanno dato (la stessa del codice), e il file dei progressi è cifrato con lei.",
   "📦 /esporta ti rimanda l'ultimo file dei progressi. Per ripartire da un file conservato, inoltralo qui.",
   "🗑 /cancella toglie tutto quello che il bot sa di te.",
 ].join("\n");
@@ -340,8 +340,8 @@ async function onDocument(msg, u, env, page) {
   if (!doc.file_size || doc.file_size > MAX_FILE) return send(env, u.id, "Questo file non lo posso usare.");
   const { id } = await fileKey(env.MASTER_KEY, u.id);
   let head = null;
-  try { head = await fileHead(env, doc.file_id, 12); } catch { /* non si scarica */ }
-  if (!isFileFor(head, id)) return send(env, u.id, "Non è un tuo file dei progressi: inoltrami un file che ti ho mandato io.");
+  try { head = await fileHead(env, doc.file_id, PP_HEADER); } catch { /* non si scarica */ }
+  if (!isPasswordFile(head) && !isFileFor(head, id)) return send(env, u.id, "Non è un file dei progressi: inoltrami un file che ti ho mandato io.");
   await setUser(env, u.id, "last_json = ?, last_msg = ?", doc.file_id, msg.message_id);
   return send(env, u.id, "Riparto da questo file dei progressi: aprilo in FitProgress.", page ? { reply_markup: { inline_keyboard: [[openButton(page)]] } } : {});
 }
@@ -489,22 +489,29 @@ function cleanGuide(s) {
 }
 const IMAGE_TYPES = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", heic: "image/heic", heif: "image/heif" };
 
-// Entrare: dati firmati da Telegram (e accesso: ALLOWED_IDS o codice d'accesso già scritto al bot) danno una
-// sessione breve e la chiave del file dei progressi. La pagina la rifà da sola quando la sessione scade
+// Entrare: dati firmati da Telegram e la password, che per ora è il codice d'accesso (lo stesso per tutti i tester:
+// vedi APPUNTI.md). Chi la scrive giusta qui è anche ammesso al bot. Tentativi: gli stessi 5 al giorno del bot.
+// Risponde una sessione breve; fileKey serve solo ad aprire i file della chat della versione di prima (FPE1)
 async function login(request, env) {
   if (request.method !== "POST") return json({ error: "missing" }, 404);
   const auth = request.headers.get("Authorization") || "";
   const who = auth.startsWith("tma ") ? await checkInitData(auth.slice(4), env.BOT_TOKEN, Date.now(), INIT_MAX_AGE) : null;
   if (!who) return json({ error: "auth" }, 401);
-  const existing = await getUser(env, who.id);
-  if (!allowed(env, who.id, existing)) return json({ error: "invite" }, 403);
-  const u = existing || await ensureUser(env, who.id);
+  const body = await request.json().catch(() => null);
+  const code = typeof body?.code === "string" ? body.code.slice(0, 200) : "";
+  if (!env.ACCESS_CODE || !safeEqual(code, env.ACCESS_CODE)) {
+    if (!(await within(env, who.id, "code"))) return json({ error: "limit" }, 429);
+    const used = (await env.DB.prepare("SELECT n FROM usage WHERE user_id = ? AND day = ? AND kind = 'code'").bind(who.id, localDate(Date.now(), tz(env))).first())?.n || 0;
+    return json({ error: "password", left: Math.max(0, LIMITS.code - used) }, 401);
+  }
+  const u = (await getUser(env, who.id)) || await ensureUser(env, who.id);
   if (!u) return json({ error: "limit" }, 429);
+  if (!u.admitted && !isAdmin(env, u.id)) await setUser(env, u.id, "admitted = 1");
   if (!(await within(env, u.id, "api"))) return json({ error: "limit" }, 429);
   const now = Date.now(), token = newToken();
   await env.DB.prepare("INSERT INTO sessions (token_hash, user_id, created_at, last_at) VALUES (?, ?, ?, ?)").bind(await tokenHash(token), u.id, now, now).run();
   const fk = await fileKey(env.MASTER_KEY, u.id);
-  return json({ token, fileKey: b64u(fk.raw), keyId: b64u(fk.id) });
+  return json({ token, fileKey: b64u(fk.raw) });
 }
 
 // La sessione della richiesta: l'utente, o null (scaduta, o di qualcuno che non può più entrare)
@@ -564,10 +571,9 @@ async function api(request, env, url) {
     const note = fromB64url(request.headers.get("X-FP-Note")).replace(/[\r\n]+/g, " ").slice(0, 200);
     const guide = cleanGuide(fromB64url(request.headers.get("X-FP-Guide")));
     const day = localDate(Date.now(), tz(env));
-    const caption = `Progressi del ${day.split("-").reverse().join("/")}, cifrati${note ? ` · ${note}` : ""}.\nSparisce fra 4 ore se non tocchi Conserva (l'ultimo resta finché non salvi di nuovo).`;
-    const { id } = await fileKey(env.MASTER_KEY, u.id);
+    const caption = `Progressi del ${day.split("-").reverse().join("/")}, cifrati con la password${note ? ` · ${note}` : ""}.\nSparisce fra 4 ore se non tocchi Conserva (l'ultimo resta finché non salvi di nuovo).`;
     let sent;
-    try { sent = await sendDocumentStream(env, u.id, request.body, length, `fitprogress-${day}.cifrato`, caption, id, keepMarkup(false)); } catch (e) {
+    try { sent = await sendDocumentStream(env, u.id, request.body, length, `fitprogress-${day}.fitprogress`, caption, keepMarkup(false)); } catch (e) {
       if (e.status === 400) return json({ error: "not-encrypted" }, 400);
       throw e;
     }

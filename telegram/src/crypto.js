@@ -58,7 +58,13 @@ export async function openText(master, userId, s) {
 export const newToken = () => b64u(crypto.getRandomValues(new Uint8Array(32)));
 export const tokenHash = async (t) => hexOf(await crypto.subtle.digest("SHA-256", enc.encode(t)));
 
-// Il file inizia come un file dei progressi cifrato con la chiave di questo utente?
+// File dei progressi cifrato con la password (lo fa la pagina): FPP1 · giri (4) · sale (16) · iv (12) · dati.
+// Il Worker la password non la usa per cifrare: controlla solo che il file sia cifrato
+export const PP_MAGIC = enc.encode("FPP1");
+export const PP_HEADER = 4 + 4 + 16 + 12;
+export const isPasswordFile = (head) => !!head && head.length >= PP_HEADER && PP_MAGIC.every((x, i) => head[i] === x);
+
+// (Versione di prima) il file inizia come un file dei progressi cifrato con la chiave di questo utente?
 export function isFileFor(head, keyId) {
   if (!head || head.length < 12) return false;
   for (let i = 0; i < 4; i++) if (head[i] !== MAGIC[i]) return false;

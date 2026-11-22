@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { fileKey, sealText, openText, newToken, tokenHash, isFileFor, sealFile, openFile, b64u, fromB64u } from "../src/crypto.js";
+import { fileKey, sealText, openText, newToken, tokenHash, isFileFor, isPasswordFile, sealFile, openFile, b64u, fromB64u } from "../src/crypto.js";
 
 const master = "11".repeat(32), other = "22".repeat(32);
 const enc = new TextEncoder(), dec = new TextDecoder();
@@ -45,6 +45,17 @@ test("sessioni: codici diversi, nel database solo l'impronta", async () => {
   assert.equal(fromB64u(t1).length, 32);
   assert.match(await tokenHash(t1), /^[0-9a-f]{64}$/);
   assert.equal(b64u(fromB64u(t1)), t1);
+});
+
+test("file cifrato con la password: il bot riconosce solo l'intestazione FPP1 intera", () => {
+  const head = new Uint8Array(36);
+  head.set(enc.encode("FPP1"));
+  assert.ok(isPasswordFile(head));
+  assert.ok(!isPasswordFile(head.slice(0, 20))); // intestazione a metà
+  assert.ok(!isPasswordFile(enc.encode('{"app":"fitprogress"} e altro testo per arrivare a 36')));
+  const fpe = head.slice();
+  fpe.set(enc.encode("FPE1"));
+  assert.ok(!isPasswordFile(fpe));
 });
 
 test("MASTER_KEY sbagliata: errore", async () => {
