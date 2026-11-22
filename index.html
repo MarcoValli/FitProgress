@@ -2,12 +2,13 @@
 <html lang="it">
 <head>
 <meta charset="utf-8">
-<!-- Privacy: la pagina può collegarsi solo al proprio sito e, se aperta come file, ai file esatti delle librerie
-     sui due CDN (non al resto di quei siti, dove chiunque può pubblicare). Niente cookie, niente statistiche.
+<!-- Privacy: la pagina può collegarsi solo al proprio sito, ai file esatti delle librerie sui due CDN (se aperta
+     come file; non al resto di quei siti, dove chiunque può pubblicare) e al controllo della password sul bot
+     (/api/check, solo quell'indirizzo: per ora, solo per i tester). Niente cookie, niente statistiche.
      Script: parte solo quello di questa pagina, riconosciuto dalla sua impronta SHA-256 (più le librerie
      controllate, come blob:, e lo script di Telegram, caricato solo dentro Telegram). Dopo ogni modifica allo
      script: node tools/csp-hash.mjs, se no la pagina non parte (a ogni push lo fa anche la GitHub Action). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-6gfzNBD5x8SN8py5vMVikcplQN0SjH7jvK2Z1tIDTIQ=' blob: 'wasm-unsafe-eval' https://telegram.org/js/telegram-web-app.js; connect-src 'self' blob: data: https://cdn.jsdelivr.net/npm/heic-to@1.6.7/dist/csp/heic-to.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/vision_bundle.mjs https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.wasm https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task; img-src 'self' blob: data:; style-src 'unsafe-inline'; worker-src 'self' blob:; manifest-src 'self'; base-uri 'none'; object-src 'none'; frame-src 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-zsebZ87PiNHGQxsKuyoUYOz9cxI2Qu5jrh+BvfYGry4=' blob: 'wasm-unsafe-eval' https://telegram.org/js/telegram-web-app.js; connect-src 'self' blob: data: https://cdn.jsdelivr.net/npm/heic-to@1.6.7/dist/csp/heic-to.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/vision_bundle.mjs https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.wasm https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task https://fitprogress-bot.marco-valli.workers.dev/api/check; img-src 'self' blob: data:; style-src 'unsafe-inline'; worker-src 'self' blob:; manifest-src 'self'; base-uri 'none'; object-src 'none'; frame-src 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -1035,15 +1036,18 @@ const TG = (() => {
 
 // ------------------------------------------------------------------ password e file dei progressi cifrato
 //
-// PER ORA, SOLO PER I TESTER: la password è una sola, quella che il gestore dà ai tester (su Telegram è anche il
-// codice d'accesso del bot). Si chiede a ogni apertura, qui e dentro Telegram, e resta solo in memoria.
+// PER ORA, SOLO PER I TESTER: la password è una sola, quella che il gestore dà ai tester. Fuori da Telegram si chiede
+// all'apertura e la controlla il bot (CHECK_URL): sbagliata, non si entra. Dentro Telegram non si chiede: l'hai
+// scritta una volta al bot, e la pagina la riceve dal bot all'accesso. Resta solo in memoria.
 // Il file dei progressi (qui e nella chat) è cifrato con lei: FPP1 · giri (4) · sale (16) · iv (12) · dati,
 // AES-GCM con la chiave da PBKDF2-SHA256. L'intestazione è autenticata. I file in chiaro di prima si aprono ancora.
-// Qui la password non si può controllare (la pagina è pubblica, non sa qual è): la prova vera è aprire un file;
-// se non ne hai aperto nessuno, al primo salvataggio la si riscrive, così un errore di battitura non chiude il file.
-// Prima di distribuire FitProgress: via password e cifratura (vedi APPUNTI.md).
+// Un file fatto con una password di prima (se il gestore la cambia) la chiede, una volta.
+// Prima di distribuire FitProgress: via password, controllo e cifratura (vedi APPUNTI.md).
 const FPP = { magic: [70, 80, 80, 49], iter: 600000, head: 36 }; // "FPP1"
-const PW = { value: "", checked: false, salt: null, keys: new Map() };
+const PW = { value: "", salt: null, keys: new Map() };
+// Da GitHub Pages o da file si chiede al bot; servita dal bot stesso (anche in prova) a lui, sullo stesso indirizzo
+const CHECK_URL = location.protocol === "file:" || location.hostname.endsWith("github.io")
+  ? "https://fitprogress-bot.marco-valli.workers.dev/api/check" : "api/check";
 async function pwKey(pw, salt, iter) {
   const id = `${iter}:${[...salt].join(",")}:${pw}`;
   if (!PW.keys.has(id)) {
@@ -1079,15 +1083,13 @@ async function openProgressFile(buf) {
     busyStart("Apro il file dei progressi…");
     try {
       try {
-        const text = await openWithPassword(b, PW.value);
-        PW.checked = true;
-        return JSON.parse(text);
+        return JSON.parse(await openWithPassword(b, PW.value));
       } catch { /* altra password */ }
     } finally { busyEnd(); }
     let text = null;
     await askPassword({
       title: "Password del file",
-      intro: "Questo file è cifrato con un'altra password, forse quella di prima. Scrivila per aprirlo: lo salverai con quella di adesso.",
+      intro: "Questo file è stato salvato con una password di prima. Scrivi quella, solo per aprirlo: quando salvi, userò quella di adesso.",
       cancel: true,
       check: async (pw) => { try { text = await openWithPassword(b, pw); return null; } catch { return "Non è questa."; } },
     });
@@ -1131,24 +1133,20 @@ function askPassword({ title = "Password", intro = "", cancel = false, check = a
     };
   });
 }
-// Fuori da Telegram, all'apertura: la password che ti hanno dato
+// Fuori da Telegram, all'apertura: la password che ti hanno dato, controllata dal bot. Finché non è giusta non si entra
 async function askPlatformPassword() {
   PW.value = await askPassword({
-    intro: "Scrivi la password che ti hanno dato: cifra il file dei progressi, e senza non si apre. Resta solo finché la pagina è aperta.",
+    intro: "FitProgress per ora è riservato ai tester: scrivi la password che ti hanno dato. Te la chiedo solo adesso.",
+    check: async (pw) => {
+      let res;
+      try { res = await fetch(CHECK_URL, { method: "POST", body: pw, credentials: "omit", referrerPolicy: "no-referrer" }); } catch { return "Non riesco a controllarla: sei connesso a internet? Riprova."; }
+      if (res.ok) return null;
+      const r = await res.json().catch(() => ({}));
+      if (res.status === 429 || r.left === 0) return "Troppi tentativi per oggi. Riprova domani.";
+      if (r.error === "password") return `Password sbagliata. ${r.left === 1 ? "Ti resta 1 tentativo" : `Ti restano ${r.left} tentativi`} per oggi.`;
+      return "Non riesco a controllarla. Riprova fra poco.";
+    },
   });
-}
-// Prima di salvare con una password mai provata su un file: riscriverla, così un errore di battitura non chiude il file
-async function confirmPassword() {
-  if (PW.checked) return true;
-  const pw = await askPassword({
-    title: "Riscrivi la password",
-    intro: "Il file dei progressi si cifra con questa password: riscrivila per essere sicuri che sia giusta.",
-    cancel: true, again: true,
-    check: async (p) => (p === PW.value ? null : "Non è uguale a quella scritta all'apertura."),
-  });
-  if (pw === null) return false;
-  PW.checked = true;
-  return true;
 }
 
 // ------------------------------------------------------------------ impostazioni e pose
@@ -4719,7 +4717,7 @@ function openSettings(first = false) {
         `<label class="switch"><span>Stima la definizione muscolare<small>Ombre fra i muscoli di petto, addome e schiena. Spegnila se fai le foto con la maglietta.</small></span><input type="checkbox" id="defInput" ${draft.definition ? "checked" : ""}></label>`)}
       ${sec("data", "I tuoi progressi", dirty ? "Da salvare" : "Salvati nel file", `
         <p class="note">${TG
-          ? "Sei dentro Telegram: Salva manda il file dei progressi nella chat col bot, cifrato con la password, con tutte le foto (ridotte). Senza password non si apre. Ogni salvataggio sparisce dalla chat dopo 4 ore, tranne l'ultimo e quelli che conservi (pulsante Conserva). Riaprendo la pagina dalla chat, anche da un altro telefono, riparti da lì."
+          ? "Sei dentro Telegram: Salva manda il file dei progressi nella chat col bot, cifrato, con tutte le foto (ridotte). Ogni salvataggio sparisce dalla chat dopo 4 ore, tranne l'ultimo e quelli che conservi (pulsante Conserva). Riaprendo la pagina dalla chat, anche da un altro telefono, riparti da lì."
           : "Il browser non tiene niente: punti, misure, diario e impostazioni restano solo nel file dei progressi, cifrato con la password che hai scritto all'apertura. Salvalo prima di chiudere la pagina, e la prossima volta caricalo. Nel file ci sono anche le foto tenute (riferimenti, partenza e Dopo); le altre no: quando apri il file, aggiungile di nuovo e i punti tornano."}</p>
         <p class="note" id="keptLine">Foto tenute: …</p>
         <div class="data-actions">
@@ -4731,7 +4729,7 @@ function openSettings(first = false) {
         ? sec("privacy", "Privacy", "Chat col bot",
           `<p class="note">Su Telegram foto e file dei progressi stanno nella tua chat col bot, sui server di Telegram. Le foto che mandi in chat non sono cifrate (le chat coi bot non lo sono): quando salvi, il bot toglie quelle già prese (se sono di meno di 48 ore fa) e restano solo nel file dei progressi, che è cifrato qui sul telefono con la password. Le foto si analizzano qui e qui non si salva niente.</p>`)
         : sec("privacy", "Privacy", "Niente esce, niente resta",
-          `<p class="note">Le foto non lasciano mai questo dispositivo: si aprono e si analizzano qui. Il browser non tiene niente: chiudendo la pagina sparisce tutto, resta solo il file dei progressi che salvi tu, cifrato con la password. Niente account, cookie, statistiche o tracciamento. La pagina è bloccata dal browser e non può collegarsi ad altri siti${location.protocol === "file:" ? ", tranne i due da cui scarica le librerie" : ""}.</p>`)}`;
+          `<p class="note">Le foto non lasciano mai questo dispositivo: si aprono e si analizzano qui. Il browser non tiene niente: chiudendo la pagina sparisce tutto, resta solo il file dei progressi che salvi tu, cifrato con la password. Niente account, cookie, statistiche o tracciamento. La pagina è bloccata dal browser e non può collegarsi ad altri siti, tranne il bot di FitProgress per controllare la password all'apertura${location.protocol === "file:" ? " e i due da cui scarica le librerie" : ""}.</p>`)}`;
     dlg.querySelectorAll("[data-acc]").forEach((d) => d.addEventListener("toggle", () => { if (d.open) open.add(d.dataset.acc); else open.delete(d.dataset.acc); }));
     dlg.querySelectorAll('input[name="who"]').forEach((i) => i.addEventListener("change", () => {
       draft.who = i.value;
@@ -4860,10 +4858,10 @@ async function exportProgress() {
   } catch { toast("Non riesco a leggere le foto salvate"); return; }
   const json = JSON.stringify({ ...base, refs, kept: keptOut });
   const n = Object.keys(photos).length;
-  const what = savedWhat(n, diary.length, items.length);
+  // Su Telegram tutte le foto hanno l'immagine: «7 foto e 2 misurazioni»
+  const what = savedWhat(n, diary.length, TG ? 0 : items.length);
   if (TG) return tgSave(json, what);
   // Cifrato con la password (vedi PW)
-  if (!(await confirmPassword())) return false;
   const file = new File([await sealWithPassword(json)], `fitprogress-${todayISO()}.fitprogress`, { type: "application/octet-stream" });
   // Salvato davvero (condiviso o scaricato): solo allora si segna e si dice
   const done = () => {
@@ -5136,29 +5134,18 @@ async function tgApi(path, opts = {}, retry = true) {
   if (!res.ok) throw new Error(`api ${res.status}`);
   return res;
 }
-// Accesso: la password (la stessa del codice d'accesso del bot) la controlla il bot. Resta in memoria: quando la
-// sessione scade se ne apre un'altra da sola
+// Accesso: chi ha già scritto la password al bot entra e basta (niente da chiedere qui). Il bot risponde una sessione
+// breve e la password con cui si cifra il file. Quando la sessione scade se ne apre un'altra da sola
 let loginWait = null;
 function tgLogin() {
   loginWait ??= (async () => {
     try {
-      const login = async (pw) => {
-        const res = await fetch("api/login", { method: "POST", credentials: "omit", headers: { Authorization: `tma ${TG.initData}`, "Content-Type": "application/json" }, body: JSON.stringify({ code: pw }) });
-        const r = await res.json().catch(() => ({}));
-        if (res.ok && r.token) {
-          TG.session = r.token;
-          if (r.fileKey) TG.fileKey = await crypto.subtle.importKey("raw", b64uBytes(r.fileKey), "AES-GCM", false, ["decrypt"]);
-          PW.value = pw;
-          PW.checked = true;
-          return null;
-        }
-        if (r.error === "password") return r.left ? `Password sbagliata. ${r.left === 1 ? "Ancora 1 tentativo" : `Ancora ${r.left} tentativi`} per oggi.` : "Troppi tentativi per oggi. Riprova domani.";
-        if (res.status === 429) return "Troppi tentativi per oggi. Riprova domani.";
-        throw new Error(res.status === 403 ? "invite" : "auth");
-      };
-      if (PW.value && (await login(PW.value)) === null) return;
-      const pw = await askPassword({ intro: "Scrivi la password che ti hanno dato (la stessa del codice per il bot): apre e cifra i tuoi progressi.", check: login });
-      if (pw === null) throw new Error("auth");
+      const res = await fetch("api/login", { method: "POST", credentials: "omit", headers: { Authorization: `tma ${TG.initData}` } });
+      if (!res.ok) throw new Error(res.status === 403 ? "invite" : res.status === 429 ? "limit" : "auth");
+      const r = await res.json();
+      TG.session = r.token;
+      PW.value = r.code;
+      if (r.fileKey) TG.fileKey = await crypto.subtle.importKey("raw", b64uBytes(r.fileKey), "AES-GCM", false, ["decrypt"]);
     } finally { loginWait = null; }
   })();
   return loginWait;
@@ -5188,7 +5175,7 @@ async function tgStart() {
     if (wa.initData) TG.initData = wa.initData;
   }
   try { await tgLogin(); } catch (e) {
-    toast(e.message === "invite" ? "Prima scrivi al bot il codice d'accesso, poi riapri la pagina dalla chat."
+    toast(e.message === "invite" ? "Prima scrivi al bot la password, poi riapri FitProgress dalla chat."
       : e.message === "limit" ? "Oggi il bot ha già lavorato troppo per te: riprova domani." : "Apri la pagina dal pulsante nella chat col bot.");
     return;
   }
