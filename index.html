@@ -7,7 +7,7 @@
      Script: parte solo quello di questa pagina, riconosciuto dalla sua impronta SHA-256 (più le librerie
      controllate, come blob:, e lo script di Telegram, caricato solo dentro Telegram). Dopo ogni modifica allo
      script: node tools/csp-hash.mjs, se no la pagina non parte (a ogni push lo fa anche la GitHub Action). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-npJOVEo53SX8o42SesrAGU6Tru0k0wHwdsThq2iopQA=' blob: 'wasm-unsafe-eval' https://telegram.org/js/telegram-web-app.js; connect-src 'self' blob: data: https://cdn.jsdelivr.net/npm/heic-to@1.6.7/dist/csp/heic-to.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/vision_bundle.mjs https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.wasm https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task; img-src 'self' blob: data:; style-src 'unsafe-inline'; worker-src 'self' blob:; manifest-src 'self'; base-uri 'none'; object-src 'none'; frame-src 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-vlRiaCo41WKs6ZEGNzUIiLWKR9ZL8y2N/p7ONIso83s=' blob: 'wasm-unsafe-eval' https://telegram.org/js/telegram-web-app.js; connect-src 'self' blob: data: https://cdn.jsdelivr.net/npm/heic-to@1.6.7/dist/csp/heic-to.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/vision_bundle.mjs https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.wasm https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task; img-src 'self' blob: data:; style-src 'unsafe-inline'; worker-src 'self' blob:; manifest-src 'self'; base-uri 'none'; object-src 'none'; frame-src 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -1349,6 +1349,15 @@ function busyEnd() {
   if ($("#busy").hidden || left <= 0) hide();
   else busy.timer = setTimeout(hide, left);
 }
+// Aspetta che quello che è cambiato sia davvero a schermo (in una scheda nascosta non si disegna: basta un attimo)
+const nextPaint = () => new Promise((r) => { requestAnimationFrame(() => setTimeout(r)); setTimeout(r, 100); });
+// Allineamenti: lavoro pesante che ferma la pagina, e a pagina ferma il timer dei 250 ms non scatta mai.
+// La copertura va a schermo subito, prima di cominciare
+async function busyNow() {
+  if (!busy.depth) return;
+  if ($("#busy").hidden) { clearTimeout(busy.timer); showBusy(); }
+  await nextPaint();
+}
 
 let toastTimer = 0;
 function toast(msg) {
@@ -1937,13 +1946,13 @@ function schedulePair(A, B) {
   if (pairPending.has(sig)) return;
   pairPending.add(sig);
   busyStart("Allineo il Dopo sul Prima…");
-  setTimeout(() => {
+  busyNow().then(() => {
     try { pairCache.set(sig, computePair(A, B)); } catch { pairCache.set(sig, { pts: pairPts(B, false), dst: pairPts(A, false), how: "points" }); }
     while (pairCache.size > 40) pairCache.delete(pairCache.keys().next().value);
     pairPending.delete(sig);
     busyEnd();
     refresh();
-  }, 30);
+  });
 }
 
 // Larghezze (nella tela del confronto) e rapporti delle misure fatte
@@ -2622,12 +2631,12 @@ async function processQueue() {
     let seeded = 0;
     if (settings.detect === "auto") {
       for (const k of POSE_KEYS) {
-        if (seedCandidates(k).length) busyStep(`Cerco i punti nella prima foto ${POSES[k].label.toLowerCase()}`);
+        if (seedCandidates(k).length) { busyStep(`Cerco i punti nella prima foto ${POSES[k].label.toLowerCase()}`); await busyNow(); }
         // Fra le foto della posa, la stima più sicura fa da partenza (a parità, la più vecchia)
         let pick = null;
         for (const p of seedCandidates(k)) {
           p.seedTried = true;
-          await new Promise((r) => setTimeout(r));
+          await nextPaint();
           const r = seedAlign(p);
           if (r && (!pick || r.conf > pick.r.conf)) pick = { p, r };
           if (r?.conf >= 0.6) break;
@@ -2648,7 +2657,7 @@ async function processQueue() {
     let done = 0;
     for (const [i, p] of pending.entries()) {
       busyStep("Allineo le foto", i + 1, pending.length);
-      await new Promise((r) => setTimeout(r));
+      await busyNow(); // a schermo anche "3 di 10", non solo la prima volta
       if (autoAlign(p)) done++;
       else p.autoSkip = true;
       changedAny = true;
