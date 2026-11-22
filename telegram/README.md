@@ -17,7 +17,7 @@ Un Cloudflare Worker (`src/worker.js`) con un database D1 (`schema.sql`).
 - **Dalla pagina**: le richieste valgono solo coi dati firmati da Telegram, controllati col token del bot e validi 24 ore. Ognuno può chiedere solo le sue foto.
 - **Chi può usarlo**: `ALLOWED_IDS` in `wrangler.toml` contiene gli ID Telegram ammessi, oppure `*` per tutti. Vuoto vuol dire nessuno: a `/start` il bot ti dice il tuo ID da mettere lì.
 
-**Privacy:** le chat coi bot non sono cifrate end-to-end. Foto e file dei progressi stanno sui server di Telegram e passano dal Worker (senza restarci). Il file dei progressi nella chat per ora è in chiaro.
+**Privacy:** le chat coi bot non sono cifrate end-to-end. Foto e file dei progressi stanno sui server di Telegram e passano dal Worker (senza restarci). Il file dei progressi nella chat per ora è in chiaro. Nel browser di Telegram la pagina non salva niente: a ogni apertura riparte dall'ultimo file della chat.
 
 ## Messa in funzione
 
