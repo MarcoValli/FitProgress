@@ -8,7 +8,7 @@
      Script: parte solo quello di questa pagina, riconosciuto dalla sua impronta SHA-256 (più le librerie
      controllate, come blob:, e lo script di Telegram, caricato solo dentro Telegram). Dopo ogni modifica allo
      script: node tools/csp-hash.mjs, se no la pagina non parte (a ogni push lo fa anche la GitHub Action). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-qqHnO9ptow4wnNB2//ldVViU3Ca28pKro3jqrA8loGo=' blob: 'wasm-unsafe-eval' https://telegram.org/js/telegram-web-app.js; connect-src 'self' blob: data: https://cdn.jsdelivr.net/npm/heic-to@1.6.7/dist/csp/heic-to.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/vision_bundle.mjs https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.wasm https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task https://fitprogress-bot.marco-valli.workers.dev/api/check; img-src 'self' blob: data:; style-src 'unsafe-inline'; worker-src 'self' blob:; manifest-src 'self'; base-uri 'none'; object-src 'none'; frame-src 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-yAy2Y0uCWISDaNiCp6xfLtwye90DQf5qe43bZBYfGJI=' blob: 'wasm-unsafe-eval' https://telegram.org/js/telegram-web-app.js; connect-src 'self' blob: data: https://cdn.jsdelivr.net/npm/heic-to@1.6.7/dist/csp/heic-to.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/vision_bundle.mjs https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.wasm https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task https://fitprogress-bot.marco-valli.workers.dev/api/check; img-src 'self' blob: data:; style-src 'unsafe-inline'; worker-src 'self' blob:; manifest-src 'self'; base-uri 'none'; object-src 'none'; frame-src 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -2658,6 +2658,7 @@ async function processQueue() {
       save(p);
       changedAny = true;
     }
+    if (pairPoses()) changedAny = true;
     // In automatico anche la prima foto di ogni posa: i punti si stimano dalla posa e si rifiniscono sull'immagine
     let seeded = 0;
     if (settings.detect === "auto") {
@@ -2742,7 +2743,47 @@ async function processQueue() {
   } finally {
     busyEnd(); // anche se qualcosa va storto, la copertura non resta lì
   }
+  if (settled && state.tgPair) { state.askStart = false; await finishPair(); }
   if (settled && state.askStart) { state.askStart = false; askStart(); }
+}
+
+// ---- primo confronto dal bot (partenza e adesso): stessa posa, la partenza come Prima, adesso come Dopo
+const pairPhotos = () => {
+  const P = state.tgPair;
+  return P?.start && P?.now ? [state.photos.find((p) => p.name === P.start), state.photos.find((p) => p.name === P.now)] : [];
+};
+// Appena riconosciute: la posa della partenza vale per tutte e due (se in una non trovo la persona, vale quella dell'altra)
+function pairPoses() {
+  const [A, B] = pairPhotos();
+  if (!A || !B || !A.lm || !B.lm || state.tgPair.posed) return false;
+  state.tgPair.posed = true;
+  const k = (!poseUnknown(A) && A.pose) || (!poseUnknown(B) && B.pose) || "front";
+  for (const p of [A, B]) {
+    if (p.pose !== k) { p.pose = k; p.meas = {}; p.align = []; p.auto = null; p.autoSkip = false; }
+    p.poseSet = "user";
+    save(p);
+  }
+  return true;
+}
+async function finishPair() {
+  pairPoses();
+  const [A, B] = pairPhotos(), noDate = state.tgPair?.noDate;
+  state.tgPair = null;
+  if (!A || !B) return;
+  kept.tappe = kept.tappe.filter((x) => x !== A.key);
+  if (kept.after[A.pose] === A.key) delete kept.after[A.pose];
+  kept.start[A.pose] = A.key;
+  await updateKept();
+  computeTransforms();
+  state.comparePose = A.pose;
+  state.selA = A.key;
+  state.selB = B.key;
+  const ready = !!(A.M && B.M);
+  if (ready) state.view = "compare";
+  else state.selected = A.M ? B : A;
+  refresh();
+  toast((ready ? "Ecco il confronto: la partenza e adesso." : "Partenza e adesso: controlla i punti in Prepara, poi Confronta.")
+    + (noDate ? " La data della partenza non la so: cambiala in Data e posa." : "") + " Poi tocca Salva.");
 }
 
 // ---- consigli rispetto al riferimento
@@ -5245,11 +5286,21 @@ async function tgSync() {
     const nDiary = entries.length ? mergeDiary(entries) : 0;
     if (entries.length && (nDiary || !entries.some((e) => validDate(e.date)))) TG.consumed.diary.push(...entries.map((e) => e.id));
     const files = [];
-    for (const [i, ph] of (Array.isArray(st.photos) ? st.photos : []).entries()) {
-      busyStep("Prendo le foto dalla chat", i + 1, st.photos.length);
+    // Primo confronto dal bot: la partenza (con la sua data; se non la sai, il giorno prima di adesso) e adesso
+    const chat = Array.isArray(st.photos) ? st.photos : [];
+    const nowPh = chat.find((ph) => ph.role === "now"), startPh = chat.find((ph) => ph.role === "start");
+    const dayOf = (ph) => {
+      if (ph.role === "start" && validDate(ph.taken)) return ph.taken;
+      if (ph.role === "start") { const d = new Date((nowPh || ph).date * 1000); d.setDate(d.getDate() - 1); return isoLocal(d.getTime()); }
+      return isoLocal(ph.date * 1000);
+    };
+    for (const [i, ph] of chat.entries()) {
+      busyStep("Prendo le foto dalla chat", i + 1, chat.length);
       try {
         const blob = await (await tgApi(`file?photo=${encodeURIComponent(ph.id)}`)).blob();
-        const name = `telegram-${isoLocal(ph.date * 1000)}-${ph.id}.jpg`;
+        const name = `telegram-${dayOf(ph)}-${ph.id}.jpg`;
+        if (ph.role === "start" && nowPh) state.tgPair = { ...state.tgPair, start: name, noDate: !validDate(ph.taken) };
+        if (ph.role === "now" && startPh) state.tgPair = { ...state.tgPair, now: name };
         const pose = poseFromCaption(ph.caption || "");
         // La posa scelta nella didascalia: makePhoto la ritrova come se l'avessi scelta tu
         if (pose) mem.setItem(`progressi:${name}:${blob.size}`, JSON.stringify({ pose, poseSet: "user" }));

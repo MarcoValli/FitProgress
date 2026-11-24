@@ -16,7 +16,8 @@ CREATE TABLE IF NOT EXISTS users (
   admitted INTEGER NOT NULL DEFAULT 0,     -- 1: ha scritto il codice d'accesso
   last_msg INTEGER,                        -- il messaggio nella chat con l'ultimo file (non si toglie mai)
   burst TEXT,                              -- foto in blocco: l'ultima arrivata (risponde lei)
-  ack_id INTEGER                           -- il messaggio "Ho N foto"
+  ack_id INTEGER,                          -- il messaggio "Ho N foto"
+  onboard TEXT                             -- primo confronto: ask, start, date, now
 );
 
 -- Salvataggi mandati nella chat: quelli non conservati (kept = 0) si tolgono dopo 4 ore, tranne l'ultimo
@@ -55,7 +56,9 @@ CREATE TABLE IF NOT EXISTS photos (
   message_id INTEGER NOT NULL,  -- il messaggio con la foto: si toglie dalla chat dopo il salvataggio
   reply_id INTEGER,             -- la risposta "Foto ricevuta", idem
   sent_at INTEGER NOT NULL,     -- secondi, come Telegram
-  caption TEXT
+  caption TEXT,
+  role TEXT,                    -- primo confronto: start (la partenza) o now (adesso)
+  taken TEXT                    -- la data della partenza, se l'hai detta
 );
 CREATE INDEX IF NOT EXISTS photos_user ON photos (user_id);
 

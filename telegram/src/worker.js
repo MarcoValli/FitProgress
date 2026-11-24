@@ -13,7 +13,7 @@
 // progressi nella chat (cifrato: lo apre solo la pagina), i salvataggi mandati in chat (per toglierli dopo 4 ore se
 // non li conservi), le sessioni (solo impronte), per 7 giorni le foto, e finché non salvi le voci del diario (anche le note) arrivate in chat e non
 // ancora prese dalla pagina (testi cifrati). Le foto e i file stanno su Telegram.
-import { parseMessage, describeItem, NUM_FIELDS, TEXT_FIELDS } from "./parse.js";
+import { parseMessage, describeItem, takeDate, shiftDate, NUM_FIELDS, TEXT_FIELDS } from "./parse.js";
 import { checkInitData, safeEqual } from "./auth.js";
 import { localDate, nextReminder, shortDate } from "./time.js";
 import { fileKey, sealText, openText, newToken, tokenHash, isFileFor, isPasswordFile, b64u, fromB64u, PP_HEADER } from "./crypto.js";
@@ -211,6 +211,7 @@ const HELP = (u) => [
   "",
   "Tengo tutto da parte e lo metto nel diario del file quando salvi. /diario mostra cosa ho tenuto.",
   "",
+  "/confronto · mi mandi una foto di prima e una di adesso, e te le metto a confronto",
   "/start rivede questo messaggio · /esporta ti rimanda l'ultimo file · /cancella toglie tutto quello che so di te",
 ].join("\n");
 
@@ -223,9 +224,21 @@ async function onMessage(msg, env, origin) {
   if (!(await within(env, uid, "msg"))) return; // oltre il limite di oggi: silenzio
   const page = await pageUrl(env, origin);
   const image = msg.photo?.length ? msg.photo[msg.photo.length - 1] : msg.document?.mime_type?.startsWith("image/") ? msg.document : null;
-  if (image) return onPhoto(msg, image, u, env, page);
+  if (image) {
+    if (image.file_size > MAX_FILE) return send(env, uid, "Questa foto è troppo grande (oltre 20 MB): mandala come foto normale, non come file.");
+    // Primo confronto: la prima foto è la partenza, la seconda è adesso (anche se arrivano insieme, in un album).
+    // Lo stato si cambia con una sola istruzione: due foto che arrivano insieme non diventano tutte e due partenza
+    if (u.onboard === "start" || u.onboard === "date" || u.onboard === "now") {
+      const toDate = await env.DB.prepare("UPDATE users SET onboard = 'date' WHERE id = ? AND onboard = 'start' RETURNING id").bind(uid).first();
+      if (toDate) return onStartPhoto(msg, image, u, env);
+      const toNow = await env.DB.prepare("UPDATE users SET onboard = 'nowing' WHERE id = ? AND onboard IN ('date', 'now') RETURNING id").bind(uid).first();
+      if (toNow) return onNowPhoto(msg, image, u, env, page);
+    }
+    return onPhoto(msg, image, u, env, page);
+  }
   if (msg.document) return onDocument(msg, u, env, page);
   const text = (msg.text || "").trim();
+  if (u.onboard === "date" && text && !text.startsWith("/")) return onStartDate(text, u, env);
   if (!text) return send(env, uid, "Mandami le foto dei progressi, oppure scrivimi peso, misure, allenamento o pasto. /start per vedere come funziona.");
   const cmd = text.match(/^\/([a-z]+)(?:@\w+)?\s*(.*)$/is);
   if (cmd) return onCommand(cmd[1].toLowerCase(), cmd[2].trim(), u, env, page);
@@ -248,15 +261,60 @@ async function askCode(msg, env, origin) {
   const u = await ensureUser(env, uid);
   if (!u) return send(env, uid, "Oggi non posso accettare utenti nuovi. Riprova domani.");
   await setUser(env, uid, "admitted = 1");
-  const page = await pageUrl(env, origin);
-  return send(env, uid, `✅ <b>Sei dentro.</b> La password non te la chiedo più, nemmeno quando apri FitProgress da qui.\n\n${HELP(u)}`, page ? { reply_markup: { inline_keyboard: [[openButton(page)]] } } : {});
+  return askFirst(env, uid, "✅ <b>Sei dentro.</b> La password non te la chiedo più, nemmeno quando apri FitProgress da qui.\n\n");
 }
+
+// ------------------------------------------------------------------ primo confronto
+//
+// Dopo la password (o con /confronto): hai già una foto di prima da confrontare, o inizi adesso?
+// Con un confronto: prima la foto di partenza (e quando l'hai fatta), poi quella di adesso. users.onboard dice a
+// che punto sei: "ask" (domanda fatta), "start" (aspetto la partenza), "date" (aspetto la sua data), "now" (aspetto
+// quella di adesso). Le due foto hanno role "start" e "now": la pagina le mette come Prima e Dopo
+const FIRST_BUTTONS = { inline_keyboard: [[{ text: "📸 Ho una foto di prima", callback_data: "o:pair" }], [{ text: "🌱 Inizio adesso", callback_data: "o:new" }]] };
+async function askFirst(env, uid, lead = "") {
+  await setUser(env, uid, "onboard = 'ask'");
+  return send(env, uid, `${lead}Hai già una foto di <b>prima</b> da confrontare con com'è <b>adesso</b>, o inizi oggi?`, { reply_markup: FIRST_BUTTONS });
+}
+// "15/03/2026", "15/3", "ieri": la data di oggi o di prima, o null
+function dayOf(text, today) {
+  const [d, rest] = takeDate(text, today);
+  if (d === today && !/\b(oggi|stamattina|stasera)\b/i.test(text)) return null;
+  return d <= today && rest.length < 20 ? d : null;
+}
+// La foto di partenza: arriva, poi chiedo quando è stata fatta
+async function onStartPhoto(msg, image, u, env) {
+  await env.DB.prepare("INSERT INTO photos (user_id, file_id, message_id, sent_at, caption, role) VALUES (?, ?, ?, ?, ?, 'start')")
+    .bind(u.id, image.file_id, msg.message_id, msg.date, msg.caption ? await seal(env, u.id, msg.caption.slice(0, 200)) : "").run();
+  return send(env, u.id, "👍 Questa è la <b>partenza</b>.\n\nQuando l'hai fatta? Scrivimi la data, per esempio <code>15/03/2026</code>.", {
+    reply_markup: { inline_keyboard: [[{ text: "Non me la ricordo", callback_data: "o:nodate" }]] },
+  });
+}
+async function onStartDate(text, u, env) {
+  const today = localDate(Date.now(), tz(env)), d = dayOf(text, today);
+  if (!d) return send(env, u.id, "Non ho capito la data. Scrivila così: <code>15/03/2026</code>. Oppure tocca «Non me la ricordo».", {
+    reply_markup: { inline_keyboard: [[{ text: "Non me la ricordo", callback_data: "o:nodate" }]] },
+  });
+  await env.DB.prepare("UPDATE photos SET taken = ? WHERE user_id = ? AND role = 'start'").bind(d, u.id).run();
+  await setUser(env, u.id, "onboard = 'now'");
+  return send(env, u.id, `Partenza del ${d.split("-").reverse().join("/")}. 📸 Ora mandami una foto di <b>adesso</b>, nella stessa posa.`);
+}
+// La foto di adesso: con la partenza è il confronto. Se la data della partenza non c'è, la pagina la mette al giorno prima
+async function onNowPhoto(msg, image, u, env, page) {
+  await env.DB.prepare("INSERT INTO photos (user_id, file_id, message_id, sent_at, caption, role) VALUES (?, ?, ?, ?, ?, 'now')")
+    .bind(u.id, image.file_id, msg.message_id, msg.date, msg.caption ? await seal(env, u.id, msg.caption.slice(0, 200)) : "").run();
+  await setUser(env, u.id, "onboard = NULL, next_at = ?", nextReminder(Date.now(), u.every_days, u.hour, tz(env)));
+  const ack = await send(env, u.id, "✅ Ho la <b>partenza</b> e la foto di <b>adesso</b>.\nTocca <b>Apri FitProgress</b>: le allineo e te le metto a confronto. Poi tocca <b>Salva</b>.",
+    page ? { reply_markup: { inline_keyboard: [[openButton(page)]] } } : {});
+  await setUser(env, u.id, "ack_id = ?", ack.message_id);
+}
+
 
 async function onCommand(cmd, arg, u, env, page) {
   const id = u.id;
   if (cmd === "start" || cmd === "aiuto" || cmd === "help") {
     return send(env, id, HELP(u), page ? { reply_markup: { inline_keyboard: [[openButton(page)]] } } : {});
   }
+  if (cmd === "confronto") return askFirst(env, id);
   if (cmd === "diario") {
     const rows = (await env.DB.prepare("SELECT date, field, value FROM diary WHERE user_id = ? ORDER BY date, id LIMIT 200").bind(id).all()).results;
     if (!rows.length) return send(env, id, "Non ho voci del diario da parte. Scrivimi peso, misure, allenamento o pasti quando vuoi.");
@@ -397,6 +455,25 @@ async function onCallback(q, env, origin) {
   const keepOpen = page ? { inline_keyboard: [[openButton(page)]] } : { inline_keyboard: [] };
   const edit = (text, markup = { inline_keyboard: [] }) => tg(env, "editMessageText", { chat_id: chatId, message_id: messageId, text, parse_mode: "HTML", reply_markup: markup }).catch(() => {});
   let m;
+  if (data === "o:pair") {
+    // Una partenza vecchia rimasta a metà si toglie
+    await env.DB.prepare("UPDATE photos SET role = NULL WHERE user_id = ? AND role IS NOT NULL").bind(uid).run();
+    await setUser(env, uid, "onboard = 'start'");
+    await answer();
+    return edit("📸 Mandami la foto di <b>partenza</b>: quella di prima, da cui vuoi vedere i progressi.\nPoi ti chiedo quella di adesso.");
+  }
+  if (data === "o:new") {
+    await setUser(env, uid, "onboard = NULL");
+    await answer();
+    await edit("🌱 Perfetto: le foto che mi mandi oggi saranno la tua <b>partenza</b>. Fra qualche settimana le rifai e vedi cosa è cambiato.");
+    return send(env, uid, HELP(u), page ? { reply_markup: { inline_keyboard: [[openButton(page)]] } } : {});
+  }
+  if (data === "o:nodate") {
+    const ok = await env.DB.prepare("UPDATE users SET onboard = 'now' WHERE id = ? AND onboard = 'date' RETURNING id").bind(uid).first();
+    await answer();
+    if (!ok) return;
+    return edit("Va bene: la metto come la foto più vecchia, la data la puoi cambiare in FitProgress (Data e posa).\n\n📸 Ora mandami una foto di <b>adesso</b>, nella stessa posa.");
+  }
   if ((m = data.match(/^(k|u)$/))) {
     const row = await env.DB.prepare("SELECT * FROM saves WHERE user_id = ? AND message_id = ?").bind(uid, messageId || 0).first();
     if (!row) { await answer("Non lo trovo più"); return; }
@@ -591,12 +668,12 @@ async function api(request, env, url) {
   }
 
   if (url.pathname === "/api/state" && request.method === "GET") {
-    const photos = (await env.DB.prepare("SELECT id, sent_at, caption FROM photos WHERE user_id = ? ORDER BY id LIMIT 100").bind(u.id).all()).results;
+    const photos = (await env.DB.prepare("SELECT id, sent_at, caption, role, taken FROM photos WHERE user_id = ? ORDER BY id LIMIT 100").bind(u.id).all()).results;
     const diary = (await env.DB.prepare("SELECT id, date, field, value FROM diary WHERE user_id = ? ORDER BY id LIMIT 1000").bind(u.id).all()).results;
     const open = async (s) => (s ? (await unseal(env, u.id, s)) || "" : "");
     return json({
       json: !!u.last_json,
-      photos: await Promise.all(photos.map(async (r) => ({ id: r.id, date: r.sent_at, caption: await open(r.caption) }))),
+      photos: await Promise.all(photos.map(async (r) => ({ id: r.id, date: r.sent_at, caption: await open(r.caption), role: r.role || null, taken: r.taken || null }))),
       diary: (await Promise.all(diary.filter((r) => NUM_FIELDS[r.field] || TEXT_FIELDS[r.field] || r.field === "note").map(async (r) => ({ ...r, value: await open(r.value) })))).filter((r) => r.value),
     });
   }
@@ -665,6 +742,7 @@ async function setup(request, env, url) {
   await tg(env, "setWebhook", { url: `${url.origin}/telegram`, secret_token: env.WEBHOOK_SECRET, allowed_updates: ["message", "callback_query"], drop_pending_updates: true, max_connections: 10 });
   await tg(env, "setMyCommands", { commands: [
     { command: "start", description: "Come funziona" },
+    { command: "confronto", description: "Una foto di prima e una di adesso, a confronto" },
     { command: "diario", description: "Le voci del diario che ho tenuto da parte" },
     { command: "esporta", description: "L'ultimo file dei progressi" },
     { command: "promemoria", description: "Quando ti ricordo le foto" },
