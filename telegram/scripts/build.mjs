@@ -23,5 +23,10 @@ writeFileSync(`${out}_headers`, `/*
   Content-Security-Policy: frame-ancestors 'self' https://web.telegram.org
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
   Cross-Origin-Opener-Policy: same-origin-allow-popups
+
+/vendor/*
+  Cache-Control: public, max-age=31536000, immutable
 `);
+// Le librerie in vendor/ non cambiano (versione fissa, impronta controllata): il telefono le tiene in cache.
+// Se un giorno cambiano, l'impronta non torna e la pagina le riprende dal CDN
 console.log("public/ pronta: index.html, vendor/ e _headers");

@@ -8,7 +8,7 @@
      Script: parte solo quello di questa pagina, riconosciuto dalla sua impronta SHA-256 (più le librerie
      controllate, come blob:, e lo script di Telegram, caricato solo dentro Telegram). Dopo ogni modifica allo
      script: node tools/csp-hash.mjs, se no la pagina non parte (a ogni push lo fa anche la GitHub Action). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-KFD3iPwlEXtzaGJT6GCZghn3YrB3koklBYgbPzyzvhw=' blob: 'wasm-unsafe-eval' https://telegram.org/js/telegram-web-app.js; connect-src 'self' blob: data: https://cdn.jsdelivr.net/npm/heic-to@1.6.7/dist/csp/heic-to.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/vision_bundle.mjs https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.wasm https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task https://fitprogress-bot.marco-valli.workers.dev/api/check; img-src 'self' blob: data:; style-src 'unsafe-inline'; worker-src 'self' blob:; manifest-src 'self'; base-uri 'none'; object-src 'none'; frame-src 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-wMhCBtXPCiX16s79fbWv1aqMAJ/Celc0bCH8bcM0VcI=' blob: 'wasm-unsafe-eval' https://telegram.org/js/telegram-web-app.js; connect-src 'self' blob: data: https://cdn.jsdelivr.net/npm/heic-to@1.6.7/dist/csp/heic-to.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/vision_bundle.mjs https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.wasm https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task https://fitprogress-bot.marco-valli.workers.dev/api/check; img-src 'self' blob: data:; style-src 'unsafe-inline'; worker-src 'self' blob:; manifest-src 'self'; base-uri 'none'; object-src 'none'; frame-src 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -1097,7 +1097,10 @@ async function openProgressFile(buf) {
     busyStart("Apro il file dei progressi…");
     try {
       try {
-        return JSON.parse(await openWithPassword(b, PW.value));
+        const text = await openWithPassword(b, PW.value);
+        // Stessa chiave per salvare (iv sempre nuovo): il calcolo lento non si rifà
+        if (!PW.salt && new DataView(b.buffer, b.byteOffset).getUint32(4) === FPP.iter) PW.salt = b.slice(8, 24);
+        return JSON.parse(text);
       } catch { /* altra password */ }
     } finally { busyEnd(); }
     let text = null;
@@ -1577,6 +1580,8 @@ async function makePhoto(key, name, baseBlob, date, stamp = "", legacyK = 1) {
     align: saved?.align ?? [], meas: saved?.meas ?? migrateMeasure(saved), noThird: saved?.noThird ?? false,
     use: saved?.use ?? null, auto: saved?.auto ?? null, lm: saved?.lm ?? null, tweak: saved?.tweak ?? null,
     poseSet: saved?.poseSet ?? false, measHand: saved?.measHand ?? false,
+    // Misure già cercate sulla sagoma (trovate o no): riaprendo non si rifà il riconoscimento per cercarle di nuovo
+    measTried: Array.isArray(saved?.measTried) ? new Set(saved.measTried) : null,
     ref: state.refKeys.has(key),
   };
   // Punti messi con l'altra scelta (di fronte: capezzoli / collo e ombelico; di lato: capezzolo / petto): da rifare
@@ -1835,8 +1840,9 @@ async function setStart(p) {
 
 function save(p) {
   const { date, pose, flip, bright, contrast, align, meas, noThird, use, auto, lm, tweak, stamp, poseSet, measHand } = p;
+  const measTried = p.measTried?.size ? [...p.measTried] : undefined;
   const { scheme, sideScheme } = settings, dims = [p.w, p.h];
-  try { mem.setItem(p.key, JSON.stringify({ date, pose, flip, bright, contrast, align, meas, noThird, use, auto, lm, tweak, scheme, sideScheme, dims, stamp, poseSet, measHand })); } catch { /* spazio pieno */ }
+  try { mem.setItem(p.key, JSON.stringify({ date, pose, flip, bright, contrast, align, meas, noThird, use, auto, lm, tweak, scheme, sideScheme, dims, stamp, poseSet, measHand, measTried })); } catch { /* spazio pieno */ }
 }
 
 // Foto con specchio, luce e contrasto applicati. I punti sono in queste coordinate.
@@ -2703,13 +2709,15 @@ async function processQueue() {
       if (!ids.length) continue;
       busyStep("Prendo le misure", i + 1, toMeasure.length);
       if (!p.sil && poserGpu && !p.silTried) { p.silTried = true; await detectPose(p); }
+      if (!p.sil) { p.measTried ??= new Set(); ids.forEach((id) => p.measTried.add(id)); continue; } // solo per adesso: non si salva
       p.measTried ??= new Set();
       ids.forEach((id) => p.measTried.add(id));
-      if (!p.sil) continue;
       const m = autoMeasures(p);
       const got = ids.filter((id) => m[id]);
       got.forEach((id) => { p.meas[id] = m[id]; });
-      if (got.length) { p.measAuto = true; measured++; save(p); changedAny = true; }
+      if (got.length) { p.measAuto = true; measured++; }
+      save(p); // anche senza misure trovate: si ricorda che le ha già cercate
+      changedAny = true;
       await new Promise((r) => setTimeout(r));
     }
     const total = seeded + done;
@@ -5060,6 +5068,7 @@ function cleanPhoto(v) {
     flip: v.flip === true, bright: clampNum(v.bright, ...ADJUST_RANGE.bright), contrast: clampNum(v.contrast, ...ADJUST_RANGE.contrast),
     align: pts(v.align, 3), meas, noThird: v.noThird === true,
     poseSet: ["auto", "user"].includes(v.poseSet) ? v.poseSet : false, measHand: v.measHand === true,
+    ...(Array.isArray(v.measTried) ? { measTried: v.measTried.filter((id) => typeof id === "string" && /^[a-z]{2,12}$/.test(id)).slice(0, 20) } : {}),
     use: typeof v.use === "boolean" ? v.use : null,
     auto: v.auto && typeof v.auto === "object" ? { conf: clampNum(v.auto.conf, 0, 1), sure: v.auto.sure === true, ...(v.auto.seed === true ? { seed: true } : {}) } : null,
     lm: Array.isArray(v.lm) ? pts(v.lm, 33) : null,
