@@ -8,7 +8,7 @@
      Script: parte solo quello di questa pagina, riconosciuto dalla sua impronta SHA-256 (più le librerie
      controllate, come blob:, e lo script di Telegram, caricato solo dentro Telegram). Dopo ogni modifica allo
      script: node tools/csp-hash.mjs, se no la pagina non parte (a ogni push lo fa anche la GitHub Action). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-xk+12xdMlE4dkNJYXuDi0BEDTWLuY/xWFPrXVAhLyHk=' blob: 'wasm-unsafe-eval' https://telegram.org/js/telegram-web-app.js; connect-src 'self' blob: data: https://cdn.jsdelivr.net/npm/heic-to@1.6.7/dist/csp/heic-to.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/vision_bundle.mjs https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.wasm https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task https://fitprogress-bot.marco-valli.workers.dev/api/check; img-src 'self' blob: data:; style-src 'unsafe-inline'; worker-src 'self' blob:; manifest-src 'self'; base-uri 'none'; object-src 'none'; frame-src 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-VACaSeF0FS2BXmVz6ytH6ga2bAr3M11g1fg0ABboDfY=' blob: 'wasm-unsafe-eval' https://telegram.org/js/telegram-web-app.js; connect-src 'self' blob: data: https://cdn.jsdelivr.net/npm/heic-to@1.6.7/dist/csp/heic-to.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/vision_bundle.mjs https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.wasm https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task https://fitprogress-bot.marco-valli.workers.dev/api/check; img-src 'self' blob: data:; style-src 'unsafe-inline'; worker-src 'self' blob:; manifest-src 'self'; base-uri 'none'; object-src 'none'; frame-src 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -1810,7 +1810,7 @@ const roleOf = (p) => kept.start[p.pose] === p.key ? "start" : kept.after[p.pose
 function bestAfter(k) {
   const start = startOf(k);
   if (!start?.M) return null;
-  const rows = analyzePose(k).rows.filter((r) => r.p !== start && byDate(start, r.p) < 0 && !r.dup && r.use);
+  const rows = analyzePose(k).rows.filter((r) => r.p !== start && byDate(start, r.p) < 0 && !r.dup && !r.same && r.use);
   if (!rows.length) return null;
   const good = rows.filter((r) => r.level !== "bad"), pool = good.length ? good : rows;
   const last = pool[pool.length - 1].p;
@@ -2019,16 +2019,89 @@ function schedulePair(A, B) {
   });
 }
 
-// Larghezze (nella tela del confronto) e rapporti delle misure fatte
-function measures(p) {
-  if (!p.M) return null;
-  const values = {}, ratios = {};
+// Larghezze e rapporti delle misure fatte. Le larghezze sono in pixel della foto diviso la scala dello scheletro
+// (s, vedi skeletonScales): non dipendono dai punti dell'allineamento, dal Prima scelto né dal ritocco a mano.
+// Senza scala restano i rapporti, che la scala non la usano
+function measures(p, s) {
+  const px = {}, values = {}, ratios = {};
   for (const id of POSES[p.pose].measures) {
     const m = p.meas[id];
-    if (m?.length === 2) values[id] = dist(apply(p.M, m[0]), apply(p.M, m[1]));
+    if (m?.length === 2) px[id] = dist(m[0], m[1]);
   }
-  for (const r of POSES[p.pose].ratios) if (values[r.a] && values[r.b]) ratios[r.id] = values[r.a] / values[r.b];
-  return Object.keys(values).length ? { values, ratios } : null;
+  if (!Object.keys(px).length) return null;
+  if (s) for (const id in px) values[id] = px[id] / s * 100;
+  for (const r of POSES[p.pose].ratios) if (px[r.a] && px[r.b]) ratios[r.id] = px[r.a] / px[r.b];
+  return { values, ratios };
+}
+
+// ---- scala dallo scheletro
+//
+// Prima le larghezze si dividevano per la distanza fra i punti dell'allineamento (capezzoli, collo e ombelico), che
+// si spostano proprio con quello che si misura: pettorali e dorsali più grossi allontanano i capezzoli e il
+// miglioramento in parte si cancellava. Le ossa invece non cambiano: spalla-anca, fra le spalle, fra le anche e,
+// a figura intera, orecchie-talloni (o caviglie). Non tutte le foto le hanno tutte: ogni foto ha una scala s e
+// ogni lunghezza un suo rapporto c con le altre (log l = log s + log c), stimati insieme su tutte le foto della posa.
+// Le lunghezze più lunghe pesano di più: l'errore dei punti è di qualche pixel, in proporzione conta meno
+function bonesOf(p) {
+  const L = p.lm;
+  if (!L?.length) return null;
+  const vis = (i) => L[i] && L[i][2] > 0.5 && L[i][0] >= 0 && L[i][1] >= 0 && L[i][0] < p.w && L[i][1] < p.h;
+  const avg = (ids) => {
+    const q = ids.filter(vis);
+    return q.length ? [q.reduce((s, i) => s + L[i][0], 0) / q.length, q.reduce((s, i) => s + L[i][1], 0) / q.length] : null;
+  };
+  const both = (i, j) => vis(i) && vis(j);
+  const out = {};
+  // Di lato le spalle (e le anche) stanno una davanti all'altra: basta quella che si vede, e la larghezza non c'è
+  const side = p.pose === "side";
+  if (side || (both(11, 12) && both(23, 24))) {
+    const s = avg([11, 12]), h = avg([23, 24]);
+    if (s && h) out.torso = dist(s, h);
+  }
+  if (!side && both(11, 12)) out.shoulders = dist(L[11], L[12]);
+  if (!side && both(23, 24)) out.hips = dist(L[23], L[24]);
+  const ear = avg([7, 8]);
+  if (ear) {
+    const heel = avg([29, 30]), ankle = avg([27, 28]);
+    if (heel) out.earHeel = dist(ear, heel);
+    else if (ankle) out.earAnkle = dist(ear, ankle);
+  }
+  for (const k in out) if (!(out[k] > 20)) delete out[k];
+  return Object.keys(out).length ? out : null;
+}
+function skeletonScales(photos) {
+  const rows = photos.map((p) => ({ p, b: bonesOf(p) })).filter((r) => r.b);
+  const scales = new Map();
+  if (!rows.length) return scales;
+  const keys = [...new Set(rows.flatMap((r) => Object.keys(r.b)))];
+  const weight = Object.fromEntries(keys.map((k) => [k, median(rows.filter((r) => r.b[k]).map((r) => r.b[k]))]));
+  const fit = () => {
+    const c = Object.fromEntries(keys.map((k) => [k, 0]));
+    const s = new Map();
+    for (let it = 0; it < 30; it++) {
+      for (const { p, b } of rows) {
+        let sw = 0, sv = 0;
+        for (const k in b) { sw += weight[k]; sv += weight[k] * (Math.log(b[k]) - c[k]); }
+        if (sw) s.set(p, sv / sw);
+      }
+      for (const k of keys) {
+        const has = rows.filter((r) => r.b[k] && s.has(r.p));
+        if (has.length) c[k] = has.reduce((a, r) => a + Math.log(r.b[k]) - s.get(r.p), 0) / has.length;
+      }
+    }
+    return { s, c };
+  };
+  // Una lunghezza molto diversa da quello che dicono le altre (un punto preso male): si toglie e si rifà il conto.
+  // Ne resta sempre almeno una
+  let { s, c } = fit(), dropped = false;
+  for (const r of rows) {
+    for (const k of Object.keys(r.b)) {
+      if (Object.keys(r.b).length > 1 && Math.abs(Math.log(r.b[k]) - c[k] - s.get(r.p)) > 0.08) { r.b = { ...r.b }; delete r.b[k]; dropped = true; }
+    }
+  }
+  if (dropped) ({ s, c } = fit());
+  for (const [p, v] of s) scales.set(p, Math.exp(v));
+  return scales;
 }
 // I clic delle misure in ordine: due per misura
 function measureSteps(p) {
@@ -3658,11 +3731,11 @@ let startQueue = [], startAll = false, startManual = false, startPick = null;
 function suggestStart(k) {
   const rows = analyzePose(k, { noStart: true }).rows;
   const old = rows.slice(0, Math.max(3, Math.ceil(rows.length / 3)));
-  const score = (r) => r.geo.length * 2 + r.handFlags.length * 1.5 + r.lightFlags.length * 0.5 + (r.p.auto && !r.p.auto.sure ? 1.5 : 0) + (r.dup ? 1 : 0);
+  const score = (r) => r.geo.length * 2 + r.handFlags.length * 1.5 + r.lightFlags.length * 0.5 + (r.p.auto && !r.p.auto.sure ? 1.5 : 0) + (r.dup || r.same ? 1 : 0);
   const picks = old.map((r) => ({ r, s: score(r) })).sort((a, b) => a.s - b.s || byDate(a.r.p, b.r.p)).slice(0, 3);
   const top = picks[0]?.r;
   return picks.sort((a, b) => byDate(a.r.p, b.r.p)).map(({ r }) => {
-    const flags = [...r.geo, ...r.handFlags, ...r.lightFlags, ...(r.dup ? ["c'è un'altra foto dello stesso giorno"] : [])];
+    const flags = [...r.geo, ...r.handFlags, ...r.lightFlags, ...(r.dup || r.same ? ["c'è un'altra foto dello stesso giorno"] : [])];
     return { p: r.p, best: r === top, why: flags.length ? cap1(flags.join(", ")) : "Dritta, in linea con le altre" };
   });
 }
@@ -4183,7 +4256,8 @@ function renderResults(an) {
   const ratio = POSES[an.k].ratios.find((r) => rows.some((x) => x.m.ratios[r.id]));
   const ids = POSES[an.k].measures.filter((id) => rows.some((x) => x.m.values[id])).slice(0, ratio ? 3 : 4);
   const first = Object.fromEntries(ids.map((id) => [id, rows.find((x) => x.m.values[id]).m.values[id]]));
-  const pct = (v) => `<span class="${Math.abs(v) < NOISE.width ? "" : v > 0 ? "up" : "down"}">${signed(v * 100)}%</span>`;
+  const err = Math.hypot(an.noise.width.m, an.noise.width.b);
+  const pct = (v) => `<span class="${Math.abs(v) < err ? "" : v > 0 ? "up" : "down"}">${signed(v * 100)}%</span>`;
   const short = (name) => name.length > 9 ? `${name.slice(0, 8)}.` : name;
   let html = `<table><thead><tr><th>Foto</th>${ratio ? `<th title="${esc(ratio.name)}">${esc(short(ratio.name))}</th>` : ""}`
     + ids.map((id) => `<th>${esc(short(MEASURES[an.k][id].name))}</th>`).join("") + `</tr></thead><tbody>`;
@@ -4360,35 +4434,65 @@ function navelOffset(p) {
   return [(v[0] - c[0]) / d, (v[1] - c[1]) / d];
 }
 
-// Retta ai minimi quadrati; margine = errore di una foto (o lo scarto dalla retta, se più grande)
+// Un punto per giorno: la media delle foto di quel giorno (k foto, vals i valori). Senza date ogni foto è un punto
+function perDay(pts) {
+  const by = new Map();
+  for (const q of pts) by.set(q.t, [...(by.get(q.t) || []), q.v]);
+  return [...by].map(([t, vals]) => ({ t, v: vals.reduce((a, b) => a + b, 0) / vals.length, k: vals.length, vals })).sort((a, b) => a.t - b.t);
+}
+// Quanto si scostano fra loro le foto dello stesso giorno (in proporzione), messo insieme su più misure.
+// È l'errore della misura (clic, bordo, posa, respiro), misurato invece che deciso: { sd, df }
+function sameDayNoise(groups, minDf = 3) {
+  let ss = 0, df = 0;
+  for (const vals of groups) {
+    if (vals.length < 2) continue;
+    const logs = vals.map(Math.log), m = logs.reduce((a, b) => a + b, 0) / logs.length;
+    ss += logs.reduce((a, l) => a + (l - m) ** 2, 0);
+    df += vals.length - 1;
+  }
+  return df >= minDf ? { sd: Math.sqrt(ss / df), df } : null;
+}
+// Errore di una foto in due parti. m va via facendo più foto di fila (si divide per √k); b resta da un giorno
+// all'altro (pancia piena, acqua, pump). Senza abbastanza foto dello stesso giorno vengono tutte e due da NOISE e
+// insieme fanno NOISE, come prima; con le foto dello stesso giorno m si misura (mai sotto un quarto di NOISE:
+// due foto quasi uguali non devono dare un margine di zero)
+const noiseOf = (base, est) => ({ m: est ? Math.max(est.sd, base * 0.25) : base * Math.sqrt(0.75), b: base * 0.5, est });
+
+// Retta ai minimi quadrati pesati, su un punto per giorno: un giorno con più foto pesa di più (errore m/√k).
+// Margine = errore dei punti; se stanno più lontani dalla retta di così (4 giorni o più), cresce in proporzione
 function trend(pts, noise) {
   const n = pts.length;
   if (n < 2) return null;
-  const mt = pts.reduce((s, q) => s + q.t, 0) / n, mv = pts.reduce((s, q) => s + q.v, 0) / n;
+  const m0 = pts.reduce((s, q) => s + q.v, 0) / n;
+  if (!m0) return null;
+  const u = pts.map((q) => q.v / m0), w = pts.map((q) => 1 / (noise.m ** 2 / (q.k || 1) + noise.b ** 2));
+  const W = w.reduce((a, b) => a + b, 0);
+  const mt = pts.reduce((s, q, i) => s + w[i] * q.t, 0) / W, mu = u.reduce((s, x, i) => s + w[i] * x, 0) / W;
   let sxx = 0, sxy = 0;
-  for (const q of pts) { sxx += (q.t - mt) ** 2; sxy += (q.t - mt) * (q.v - mv); }
-  if (!sxx || !mv) return null;
+  pts.forEach((q, i) => { sxx += w[i] * (q.t - mt) ** 2; sxy += w[i] * (q.t - mt) * (u[i] - mu); });
+  if (!sxx || !mu) return null;
   const slope = sxy / sxx, t0 = pts[0].t, t1 = pts[n - 1].t;
-  const start = mv + slope * (t0 - mt), end = mv + slope * (t1 - mt);
-  const resid = n >= 4 ? Math.sqrt(pts.reduce((s, q) => s + (q.v - (mv + slope * (q.t - mt))) ** 2, 0) / (n - 2)) / mv : 0;
-  const sigma = Math.max(noise, resid);
-  const se = sigma * (t1 - t0) / Math.sqrt(sxx);
-  const chg = (end - start) / mv;
+  const chi2 = pts.reduce((s, q, i) => s + w[i] * (u[i] - mu - slope * (q.t - mt)) ** 2, 0);
+  const phi = n >= 4 ? Math.max(1, chi2 / (n - 2)) : 1;
+  const start = (mu + slope * (t0 - mt)) * m0, end = (mu + slope * (t1 - mt)) * m0;
+  const se = (t1 - t0) * Math.sqrt(phi / sxx) / mu;
+  const chg = (end - start) / (mu * m0);
   const verdict = Math.abs(chg) > 2 * se ? "yes" : Math.abs(chg) > se ? "maybe" : "no";
-  return { start, end, chg, se, verdict, n };
+  return { start, end, chg, se, verdict, n, photos: pts.reduce((s, q) => s + (q.k || 1), 0) };
 }
 
 // noStart: senza la foto di partenza come riferimento (per proporne una nuova)
 function analyzePose(k, { noStart = false } = {}) {
   const photos = readyFor(k);
   const zones = zonesFor(k, photos);
+  const scales = skeletonScales(photos);
   const rows = photos.map((p) => {
     const z = zones.map((zone) => zoneStatsOf(p, zone.r));
     const lit = z.filter((s) => s.cover > 0);
     const w = lit.reduce((s, q) => s + q.cover, 0);
     const light = lit.length ? ["mean", "lr", "tb"].reduce((o, key) => ({ ...o, [key]: lit.reduce((s, q) => s + q[key] * q.cover, 0) / w }), {}) : null;
     return {
-      p, z, light, m: measures(p),
+      p, z, light, m: measures(p, scales.get(p)),
       rot: Math.atan2(p.M.b, p.M.a) * 180 / Math.PI,
       frame: dist(p.align[0], p.align[1]) / Math.hypot(p.proc.width, p.proc.height),
       nav: navelOffset(p),
@@ -4443,13 +4547,18 @@ function analyzePose(k, { noStart = false } = {}) {
     r.auto = r.level !== "bad";
     r.rank = r.geo.length * 2 + r.handFlags.length + r.lightFlags.length * 0.25 + (r.p.auto ? 1 - r.p.auto.conf : 0) - (r.isRef ? 100 : 0);
   });
-  // Una foto per giorno: la più simile alle altre (o al riferimento) e senza mani davanti
+  // Più foto nello stesso giorno: fanno media (same = la migliore del giorno), così l'errore scende e si vede
+  // quanto è. Quelle da scartare restano fuori come doppioni (dup). La migliore è la più simile alle altre
+  // (o al riferimento) e senza mani davanti: è lei che si propone come Dopo o come partenza
   const days = new Map();
   rows.forEach((r) => { if (r.p.date) days.set(r.p.date, [...(days.get(r.p.date) || []), r]); });
   for (const group of days.values()) {
     if (group.length < 2) continue;
     const best = group.reduce((a, b) => (b.rank < a.rank ? b : a));
-    group.forEach((r) => { if (r !== best) { r.dup = best; r.auto = false; } });
+    group.forEach((r) => {
+      if (r === best) return;
+      if (r.level === "bad") { r.dup = best; r.auto = false; } else r.same = best;
+    });
   }
   if (rows.filter((r) => r.auto).length < 2) rows.forEach((r) => { if (!r.dup) r.auto = true; });
   rows.forEach((r) => { r.use = r.p.use ?? r.auto; });
@@ -4459,19 +4568,66 @@ function analyzePose(k, { noStart = false } = {}) {
   const day0 = hasDates && used.length ? new Date(used[0].p.date).getTime() : 0;
   const tOf = (r, i) => hasDates ? (new Date(r.p.date).getTime() - day0) / 864e5 : i;
   const measured = used.filter((r) => r.m);
-  const series = (get) => measured.map((r, i) => ({ r, i, v: get(r.m) })).filter((q) => q.v).map((q) => ({ t: tOf(q.r, q.i), v: q.v }));
+  const series = (get) => perDay(measured.map((r, i) => ({ r, i, v: get(r.m) })).filter((q) => q.v).map((q) => ({ t: tOf(q.r, q.i), v: q.v })));
   const defRows = used.filter((r) => !r.lightFlags.length);
+  const widthPts = POSES[k].measures.map((id) => ({ id, pts: series((m) => m.values[id]) }));
+  const ratioPts = POSES[k].ratios.map((ratio) => ({ ratio, pts: series((m) => m.ratios[ratio.id]) }));
+  const defPts = zones.map((zone, j) => {
+    const pts = defRows.map((r) => ({ r, s: r.z[j] })).filter((q) => q.s.cover >= 0.9 && !q.r.covered.includes(j));
+    return { zone, pts: perDay(pts.map((q, i) => ({ t: tOf(q.r, i), v: q.s.def }))) };
+  });
+  // L'errore di una foto, dalle foto dello stesso giorno di tutte le misure di un tipo (se ce ne sono abbastanza)
+  const noiseFrom = (list, base) => noiseOf(base, sameDayNoise(list.flatMap((x) => x.pts.map((q) => q.vals))));
+  const noise = { width: noiseFrom(widthPts, NOISE.width), ratio: noiseFrom(ratioPts, NOISE.ratio), def: noiseFrom(defPts, NOISE.def) };
   const trends = {
-    m: POSES[k].measures.map((id) => ({ id, tr: trend(series((m) => m.values[id]), NOISE.width) })).filter((x) => x.tr),
-    r: POSES[k].ratios.map((ratio) => ({ ratio, tr: trend(series((m) => m.ratios[ratio.id]), NOISE.ratio) })).filter((x) => x.tr),
-    def: zones.map((zone, j) => {
-      const pts = defRows.map((r) => ({ r, s: r.z[j] })).filter((q) => q.s.cover >= 0.9 && !q.r.covered.includes(j));
-      return { zone, tr: trend(pts.map((q, i) => ({ t: tOf(q.r, i), v: q.s.def })), NOISE.def) };
-    }),
+    m: widthPts.map(({ id, pts }) => ({ id, tr: trend(pts, noise.width) })).filter((x) => x.tr),
+    r: ratioPts.map(({ ratio, pts }) => ({ ratio, tr: trend(pts, noise.ratio) })).filter((x) => x.tr),
+    def: defPts.map(({ zone, pts }) => ({ zone, tr: trend(pts, noise.def) })),
   };
   const span = used.length >= 2 ? tOf(used[used.length - 1], used.length - 1) - tOf(used[0], 0) : 0;
   const coveredOut = zones.map((zone, j) => ({ zone, n: defRows.filter((r) => r.covered.includes(j)).length })).filter((c) => c.n);
-  return { k, rows, used, zones, trends, hasDates, span, lightOut: used.length - defRows.length, measured: measured.length, coveredOut };
+  return { k, rows, used, zones, trends, noise, hasDates, span, lightOut: used.length - defRows.length, measured: measured.length, coveredOut };
+}
+
+// ---- banco di prova, dalla console: fitBanco()
+//
+// Per ogni misura: quanto si scostano fra loro le foto dello stesso giorno e quanto i giorni si scostano dalla
+// retta, con la scala di prima (punti dell'allineamento, sulla sagoma della posa) e con quella dello scheletro.
+// Vince chi si scosta meno. Servono giornate con 2–3 foto fatte di fila (per lo stesso giorno) o almeno 4 giorni
+function fitBanco() {
+  const pct = (x) => x == null ? "–" : `${(x * 100).toFixed(2)}%`;
+  const scatter = (pts) => {
+    if (pts.length < 4) return null;
+    const n = pts.length, mt = pts.reduce((s, q) => s + q.t, 0) / n, mv = pts.reduce((s, q) => s + q.v, 0) / n;
+    let sxx = 0, sxy = 0;
+    for (const q of pts) { sxx += (q.t - mt) ** 2; sxy += (q.t - mt) * (q.v - mv); }
+    const b = sxx ? sxy / sxx : 0;
+    return Math.sqrt(pts.reduce((s, q) => s + (q.v - mv - b * (q.t - mt)) ** 2, 0) / (n - 2)) / mv;
+  };
+  const out = [];
+  for (const k of POSE_KEYS) {
+    const used = analyzePose(k).used.filter((r) => r.p.date && r.p.M0);
+    if (used.length < 2) continue;
+    const scales = skeletonScales(used.map((r) => r.p));
+    const byPoints = (p, id) => {
+      const m = p.meas[id], M = withTweak(p.M0, p);
+      return m?.length === 2 ? dist(apply(M, m[0]), apply(M, m[1])) : null;
+    };
+    const bySkeleton = (p, id) => measures(p, scales.get(p))?.values[id];
+    for (const id of POSES[k].measures) {
+      const row = { posa: POSES[k].label, misura: MEASURES[k][id].name };
+      for (const [how, val] of [["punti", byPoints], ["scheletro", bySkeleton]]) {
+        const pts = perDay(used.map((r) => ({ t: new Date(r.p.date).getTime() / 864e5, v: val(r.p, id) })).filter((q) => q.v));
+        const same = sameDayNoise(pts.map((q) => q.vals), 1);
+        row.giorni = pts.length;
+        row[`stesso giorno · ${how}`] = same ? `${pct(same.sd)} (${same.df})` : "–";
+        row[`dalla retta · ${how}`] = pct(scatter(pts));
+      }
+      out.push(row);
+    }
+  }
+  console.table(out);
+  return out;
 }
 
 const spanText = (an) => {
@@ -4532,7 +4688,11 @@ function renderAnalysis(an) {
   if (an.lightOut) notes.push(`${an.lightOut === 1 ? "1 foto ha" : `${an.lightOut} foto hanno`} una luce diversa: non conta per la definizione. Prova a sistemarla con Luce.`);
   for (const { zone, n } of an.coveredOut) notes.push(`${n === 1 ? "In 1 foto" : `In ${n} foto`} una mano copre ${zone.name === "Addome" ? "l'addome" : `il ${zone.name.toLowerCase()}`}: lì non conta per la definizione.`);
   const dups = an.rows.filter((x) => x.dup).length;
-  if (dups) notes.unshift(`Tengo una foto per giorno, la più simile alle altre: ${dups === 1 ? "1 doppione escluso" : `${dups} doppioni esclusi`}.`);
+  if (dups) notes.unshift(`Dello stesso giorno di un'altra foto ma troppo diverse: ${dups === 1 ? "1 doppione escluso" : `${dups} doppioni esclusi`}.`);
+  const sames = an.rows.filter((x) => x.same && x.use).length;
+  if (sames) notes.unshift(`${sames === 1 ? "1 foto fa" : `${sames} foto fanno`} media con le altre dello stesso giorno: così il margine scende.`);
+  const est = an.noise.width.est;
+  if (est && an.trends.m.length) notes.push(`Dalle foto dello stesso giorno: una foto sbaglia le larghezze di circa ±${num(est.sd * 100)}%.`);
   if (an.trends.def.some(({ tr }) => tr && tr.verdict !== "no" && tr.chg > 0)) notes.push("La definizione la gonfiano pump e luce dall'alto: meglio foto a freddo, sempre con la stessa luce.");
 
   const verdict = seen.length ? `${seen.length === 1 ? "1 cambio visibile" : `${seen.length} cambi visibili`}` : maybe.length ? "qualcosa si muove" : still.length ? "niente oltre il margine" : `${an.used.length} foto`;
@@ -4551,6 +4711,7 @@ function renderQuality(an) {
     const why = [...r.geo, ...r.handFlags, ...r.lightFlags, ...(hasTweak(r.p) ? ["ritoccata a mano"] : [])];
     const text = r.isRef ? (roleOf(r.p) === "start" ? "La foto di partenza: le altre si confrontano con questa" : r.p.ref ? "Il tuo riferimento: le altre si confrontano con questa" : "Le altre si confrontano con questa")
       : r.dup ? `Stesso giorno: tengo ${r.dup.p.name}${why.length ? ` (${why.join(", ")})` : ""}`
+      : r.same ? `Stesso giorno di ${r.same.p.name}: fanno media${why.length ? ` (${why.join(", ")})` : ""}`
       : why.length ? why.join(", ") : "In linea con le altre";
     return `<li class="${r.use ? "" : "off"}"><div class="top"><span class="d">${esc(labelOf(r.p))}</span><span class="pill ${cls}">${label}</span></div>`
       + `<label class="switch" title="Usa nell'analisi"><input type="checkbox" data-use="${esc(r.p.key)}" ${r.use ? "checked" : ""} aria-label="Usa ${esc(labelOf(r.p))} nell'analisi"></label>`
