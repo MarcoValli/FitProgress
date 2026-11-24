@@ -8,7 +8,7 @@
      Script: parte solo quello di questa pagina, riconosciuto dalla sua impronta SHA-256 (più le librerie
      controllate, come blob:, e lo script di Telegram, caricato solo dentro Telegram). Dopo ogni modifica allo
      script: node tools/csp-hash.mjs, se no la pagina non parte (a ogni push lo fa anche la GitHub Action). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-keljx1IEVEJA8m2BPiVosc2+DBk0P0FE1McIH/4aLRU=' blob: 'wasm-unsafe-eval' https://telegram.org/js/telegram-web-app.js; connect-src 'self' blob: data: https://cdn.jsdelivr.net/npm/heic-to@1.6.7/dist/csp/heic-to.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/vision_bundle.mjs https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.wasm https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task https://fitprogress-bot.marco-valli.workers.dev/api/check; img-src 'self' blob: data:; style-src 'unsafe-inline'; worker-src 'self' blob:; manifest-src 'self'; base-uri 'none'; object-src 'none'; frame-src 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-VACaSeF0FS2BXmVz6ytH6ga2bAr3M11g1fg0ABboDfY=' blob: 'wasm-unsafe-eval' https://telegram.org/js/telegram-web-app.js; connect-src 'self' blob: data: https://cdn.jsdelivr.net/npm/heic-to@1.6.7/dist/csp/heic-to.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/vision_bundle.mjs https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.wasm https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task https://fitprogress-bot.marco-valli.workers.dev/api/check; img-src 'self' blob: data:; style-src 'unsafe-inline'; worker-src 'self' blob:; manifest-src 'self'; base-uri 'none'; object-src 'none'; frame-src 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -1055,6 +1055,7 @@ const TG = (() => {
 // scritta una volta al bot, e la pagina la riceve dal bot all'accesso. Resta solo in memoria.
 // Il file dei progressi (qui e nella chat) è cifrato con lei: FPP1 · giri (4) · sale (16) · iv (12) · dati,
 // AES-GCM con la chiave da PBKDF2-SHA256. L'intestazione è autenticata. I file in chiaro di prima si aprono ancora.
+// Nella chat, sopra, c'è la chiave dell'utente (FPU, più sotto).
 // Un file fatto con una password di prima (se il gestore la cambia) la chiede, una volta.
 // Prima di distribuire FitProgress: via password, controllo e cifratura (vedi APPUNTI.md).
 const FPP = { magic: [70, 80, 80, 49], iter: 600000, head: 36 }; // "FPP1"
@@ -1089,10 +1090,35 @@ async function openWithPassword(b, pw) {
   const key = await pwKey(pw, head.slice(8, 24), iter);
   return new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: head.slice(24, 36), additionalData: head }, key, b.slice(FPP.head)));
 }
+// Nella chat di Telegram c'è un livello in più: il file con la password (FPP1) è cifrato di nuovo con la chiave di
+// chi lo salva, che il bot ricava dal suo ID Telegram e da MASTER_KEY e dà alla pagina solo dentro una sessione
+// (TG.fileKey e il suo id). FPU1 · id della chiave (8) · iv (12) · file FPP1, AES-GCM, intestazione autenticata.
+// La password è la stessa per tutti i tester: così un file della chat lo apre solo chi l'ha salvato, dal bot.
+// Fuori da Telegram la chiave non c'è: un file della chat lì non si apre
+const FPU = { magic: [70, 80, 85, 49], head: 24 }; // "FPU1"
+const isUserSealed = (b) => b.length > FPU.head && FPU.magic.every((x, i) => b[i] === x);
+async function sealForUser(blob) {
+  if (!TG?.fileKey || !TG.fileKeyId) throw new Error("chiave");
+  const head = new Uint8Array(FPU.head), iv = crypto.getRandomValues(new Uint8Array(12));
+  head.set(FPU.magic);
+  head.set(TG.fileKeyId, 4);
+  head.set(iv, 12);
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: head }, TG.fileKey, await blob.arrayBuffer());
+  return new Blob([head, ct], { type: "application/octet-stream" });
+}
 // Il file dei progressi, cifrato o no, come oggetto. Se la password di adesso non lo apre (file fatto con una
-// password di prima) la si chiede; Annulla: null
+// password di prima) la si chiede; Annulla: null. Un file della chat (FPU1) che qui non si apre: errore
+// "solo-bot" (fuori da Telegram) o "altro-utente" (salvato da un'altra persona)
 async function openProgressFile(buf) {
   const b = new Uint8Array(buf);
+  if (isUserSealed(b)) {
+    if (!TG?.fileKey || !TG.fileKeyId) throw new Error("solo-bot");
+    if (!TG.fileKeyId.every((x, i) => b[4 + i] === x)) throw new Error("altro-utente");
+    const head = b.slice(0, FPU.head);
+    const inner = new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv: head.slice(12), additionalData: head }, TG.fileKey, b.slice(FPU.head)));
+    if (!isSealed(inner)) throw new Error("formato"); // dentro c'è sempre il file con la password
+    return openProgressFile(inner.buffer);
+  }
   if (isSealed(b)) {
     busyStart("Apro il file dei progressi…");
     try {
@@ -5245,7 +5271,11 @@ function cleanPhoto(v) {
 
 async function importProgress(file) {
   let data;
-  try { data = await openProgressFile(await file.arrayBuffer()); } catch { /* non è un file dei progressi */ }
+  try { data = await openProgressFile(await file.arrayBuffer()); } catch (e) {
+    // File della chat del bot: si apre solo lì, da chi l'ha salvato (se no: non è un file dei progressi)
+    if (e?.message === "solo-bot") { toast("Questo file viene dalla chat del bot: si apre solo da FitProgress dentro Telegram, a chi l'ha salvato."); return false; }
+    if (e?.message === "altro-utente") { toast("Questo file l'ha salvato un'altra persona: si apre solo dalla sua chat col bot."); return false; }
+  }
   if (data === null) return false; // annullato: era cifrato con un'altra password
   if (!["fitprogress", "progressi"].includes(data?.app) || !data.photos || typeof data.photos !== "object") {
     toast("Questo file non è un salvataggio di FitProgress");
@@ -5412,7 +5442,9 @@ function tgLogin() {
       const r = await res.json();
       TG.session = r.token;
       PW.value = r.code;
-      if (r.fileKey) TG.fileKey = await crypto.subtle.importKey("raw", b64uBytes(r.fileKey), "AES-GCM", false, ["decrypt"]);
+      // La chiave di questo utente (dal suo ID Telegram): il secondo livello del file nella chat, vedi FPU
+      if (r.fileKey) TG.fileKey = await crypto.subtle.importKey("raw", b64uBytes(r.fileKey), "AES-GCM", false, ["encrypt", "decrypt"]);
+      if (r.fileKeyId) TG.fileKeyId = b64uBytes(r.fileKeyId);
     } finally { loginWait = null; }
   })();
   return loginWait;
@@ -5505,11 +5537,12 @@ function tgGuide() {
   const k = POSE_KEYS.find((q) => refFor(q));
   return k ? { pose: POSES[k].label, lines: guideSteps(refFor(k)) } : null;
 }
-// Salva su Telegram: il file, cifrato qui con la password, va al bot, che lo manda nella chat e toglie dalla chat le foto già prese
+// Salva su Telegram: il file, cifrato qui con la password e poi con la chiave di questo utente (FPU), va al bot, che
+// lo manda nella chat e toglie dalla chat le foto già prese
 // inFile: le foto che sono davvero nel file. Solo quelle si tolgono dalla chat
 async function tgSave(json, what, inFile = new Set()) {
   try {
-    const body = await sealWithPassword(json);
+    const body = await sealForUser(await sealWithPassword(json));
     const gone = TG.consumed.photos.filter((id) => inFile.has(TG.photoKeys.get(id)));
     await tgApi("save", {
       method: "POST",
