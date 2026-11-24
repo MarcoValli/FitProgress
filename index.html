@@ -8,7 +8,7 @@
      Script: parte solo quello di questa pagina, riconosciuto dalla sua impronta SHA-256 (più le librerie
      controllate, come blob:, e lo script di Telegram, caricato solo dentro Telegram). Dopo ogni modifica allo
      script: node tools/csp-hash.mjs, se no la pagina non parte (a ogni push lo fa anche la GitHub Action). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-yAy2Y0uCWISDaNiCp6xfLtwye90DQf5qe43bZBYfGJI=' blob: 'wasm-unsafe-eval' https://telegram.org/js/telegram-web-app.js; connect-src 'self' blob: data: https://cdn.jsdelivr.net/npm/heic-to@1.6.7/dist/csp/heic-to.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/vision_bundle.mjs https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.wasm https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task https://fitprogress-bot.marco-valli.workers.dev/api/check; img-src 'self' blob: data:; style-src 'unsafe-inline'; worker-src 'self' blob:; manifest-src 'self'; base-uri 'none'; object-src 'none'; frame-src 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-KFD3iPwlEXtzaGJT6GCZghn3YrB3koklBYgbPzyzvhw=' blob: 'wasm-unsafe-eval' https://telegram.org/js/telegram-web-app.js; connect-src 'self' blob: data: https://cdn.jsdelivr.net/npm/heic-to@1.6.7/dist/csp/heic-to.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/vision_bundle.mjs https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.js https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm/vision_wasm_internal.wasm https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task https://fitprogress-bot.marco-valli.workers.dev/api/check; img-src 'self' blob: data:; style-src 'unsafe-inline'; worker-src 'self' blob:; manifest-src 'self'; base-uri 'none'; object-src 'none'; frame-src 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -1043,7 +1043,8 @@ const TG = (() => {
   try {
     const initData = new URLSearchParams(location.hash.slice(1)).get("tgWebAppData");
     // consumed: righe del bot (foto, voci del diario) già prese, da togliere dalla chat al prossimo Salva
-    return initData ? { initData, consumed: { photos: [], diary: [] } } : null;
+    // photoKeys: foto della chat → la sua chiave qui (la foto si toglie dalla chat solo se è davvero nel file)
+    return initData ? { initData, consumed: { photos: [], diary: [] }, photoKeys: new Map() } : null;
   } catch { return null; }
 })();
 
@@ -3719,10 +3720,15 @@ async function shrinkImage(blob) {
   c.width = c.height = 0;
   return out;
 }
-// Le immagini che finiscono nel file dei progressi
+// Le immagini che finiscono nel file dei progressi. Su Telegram tutte le foto aperte, anche quelle che la pagina sta
+// ancora riconoscendo (le foto si tolgono dalla chat: se non sono nel file, si perdono)
 async function imagesForFile() {
   const items = await savedImages();
-  if (TG) for (const it of items) it.blob = await shrinkImage(it.blob).catch(() => it.blob);
+  if (TG) {
+    const have = new Set(items.map((it) => it.key));
+    for (const p of state.photos) if (!have.has(p.key)) items.push({ key: p.key, name: p.name, date: p.date || "", stamp: p.stamp || "", blob: p.baseBlob, ref: false, kept: true });
+    for (const it of items) it.blob = await shrinkImage(it.blob).catch(() => it.blob);
+  }
   return items;
 }
 // Tutte le immagini salvate, una per foto: { key, name, date, stamp, blob, ref, kept }
@@ -4950,7 +4956,7 @@ async function exportProgress() {
   const n = Object.keys(photos).length;
   // Su Telegram tutte le foto hanno l'immagine: «7 foto e 2 misurazioni»
   const what = savedWhat(n, diary.length, TG ? 0 : items.length);
-  if (TG) return tgSave(json, what);
+  if (TG) return tgSave(json, what, new Set(items.map((it) => it.key)));
   // Cifrato con la password (vedi PW)
   const file = new File([await sealWithPassword(json)], `fitprogress-${todayISO()}.fitprogress`, { type: "application/octet-stream" });
   // Salvato davvero (condiviso o scaricato): solo allora si segna e si dice
@@ -5146,6 +5152,7 @@ async function openProgressData(data, { quietToast = false } = {}) {
   refresh();
   processQueue();
   const images = new Set([...refs, ...keptIn].map((r) => r.key)).size;
+  n = Math.max(n, images); // foto salvate prima di essere riconosciute: hanno l'immagine ma non ancora i punti
   if (quietToast) return true;
   toast(notSaved ? `Caricati i progressi di ${savedWhat(n, fileDiary.length, 0)}, ma non riesco ad aprire le foto del file.`
     : `Caricati i progressi di ${savedWhat(n, fileDiary.length, images)}.${n > images ? " Trascina le altre foto: i punti tornano da soli." : ""}`);
@@ -5280,7 +5287,11 @@ async function tgSync() {
     if (st.json) {
       let data = null;
       try { data = await openProgressFile(await (await tgApi("file?json=1")).arrayBuffer()); } catch { toast("Non riesco ad aprire l'ultimo file dei progressi della chat."); }
-      if (["fitprogress", "progressi"].includes(data?.app) && data.photos && typeof data.photos === "object") await importData(data);
+      if (["fitprogress", "progressi"].includes(data?.app) && data.photos && typeof data.photos === "object") {
+        await importData(data);
+        const withImage = state.photos.length, all = Object.keys(data.photos).length;
+        if (all > withImage) toast(`Nell'ultimo file ci sono ${all} foto ma ${withImage === 1 ? "solo 1 ha" : `solo ${withImage} hanno`} l'immagine: le altre rimandale al bot.`);
+      }
     }
     const entries = Array.isArray(st.diary) ? st.diary : [];
     const nDiary = entries.length ? mergeDiary(entries) : 0;
@@ -5305,8 +5316,9 @@ async function tgSync() {
         // La posa scelta nella didascalia: makePhoto la ritrova come se l'avessi scelta tu
         if (pose) mem.setItem(`progressi:${name}:${blob.size}`, JSON.stringify({ pose, poseSet: "user" }));
         files.push(new File([blob], name, { type: blob.type?.startsWith("image/") ? blob.type : "image/jpeg", lastModified: ph.date * 1000 }));
-      } catch { /* foto che non si scarica: si toglie lo stesso, se no torna sempre */ }
-      TG.consumed.photos.push(ph.id);
+        TG.photoKeys.set(ph.id, `progressi:${name}:${blob.size}`);
+        TG.consumed.photos.push(ph.id);
+      } catch { /* foto che non si scarica: resta nella chat, si riprova la prossima volta */ }
     }
     if (files.length) await addFiles(files);
     const xs = [files.length && countOf(files.length, "foto", "foto"), nDiary && countOf(nDiary, "voce del diario", "voci del diario")].filter(Boolean);
@@ -5324,21 +5336,23 @@ function tgGuide() {
   return k ? { pose: POSES[k].label, lines: guideSteps(refFor(k)) } : null;
 }
 // Salva su Telegram: il file, cifrato qui con la password, va al bot, che lo manda nella chat e toglie dalla chat le foto già prese
-async function tgSave(json, what) {
+// inFile: le foto che sono davvero nel file. Solo quelle si tolgono dalla chat
+async function tgSave(json, what, inFile = new Set()) {
   try {
     const body = await sealWithPassword(json);
+    const gone = TG.consumed.photos.filter((id) => inFile.has(TG.photoKeys.get(id)));
     await tgApi("save", {
       method: "POST",
       headers: {
         "Content-Type": "application/octet-stream",
-        "X-FP-Photos": TG.consumed.photos.join(","),
+        "X-FP-Photos": gone.join(","),
         "X-FP-Diary": TG.consumed.diary.join(","),
         "X-FP-Note": b64url(what),
         "X-FP-Guide": b64url(JSON.stringify(tgGuide())),
       },
       body,
     });
-    TG.consumed = { photos: [], diary: [] };
+    TG.consumed = { photos: TG.consumed.photos.filter((id) => !gone.includes(id)), diary: [] };
     mem.setItem(LAST_EXPORT_KEY, String(Date.now()));
     markSaved();
     toast("Salvato nella chat, cifrato");
