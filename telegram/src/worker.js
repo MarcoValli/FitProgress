@@ -16,7 +16,7 @@
 import { parseMessage, describeItem, takeDate, shiftDate, NUM_FIELDS, TEXT_FIELDS } from "./parse.js";
 import { checkInitData, safeEqual } from "./auth.js";
 import { localDate, nextReminder, shortDate } from "./time.js";
-import { fileKey, sealText, openText, newToken, tokenHash, isFileFor, isPasswordFile, b64u, fromB64u, PP_HEADER } from "./crypto.js";
+import { fileKey, sealText, openText, newToken, tokenHash, isFileFor, isUserFile, isPasswordFile, b64u, fromB64u, PP_HEADER, U_MAGIC, HEADER } from "./crypto.js";
 
 const EVERY = 14, HOUR = 8; // promemoria: ogni 14 giorni alle 8
 const MAX_FILE = 20e6; // il bot riscarica file fino a 20 MB: più grandi non si potrebbero riaprire
@@ -94,9 +94,10 @@ async function fileHead(env, fileId, n) {
   return out.subarray(0, got);
 }
 
-// Il file dei progressi (già cifrato dalla pagina con la password) va a Telegram mentre arriva, senza tenerlo tutto
-// in memoria. Prima di mandarlo si controlla che sia un file cifrato (FPP1): se no non parte niente
-async function sendDocumentStream(env, chatId, body, length, filename, caption, markup) {
+// Il file dei progressi (già cifrato dalla pagina: con la password, poi con la chiave dell'utente) va a Telegram
+// mentre arriva, senza tenerlo tutto in memoria. Prima di mandarlo si controlla che sia cifrato con la chiave di chi
+// salva (FPU1 col suo id della chiave): se no non parte niente
+async function sendDocumentStream(env, chatId, keyId, body, length, filename, caption, markup) {
   const boundary = `fp${crypto.randomUUID().replace(/-/g, "")}`;
   const field = (name, value) => `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`;
   const head = enc.encode(field("chat_id", chatId) + field("caption", caption) + field("reply_markup", JSON.stringify(markup))
@@ -104,19 +105,19 @@ async function sendDocumentStream(env, chatId, body, length, filename, caption, 
   const tail = enc.encode(`\r\n--${boundary}--\r\n`);
   const { readable, writable } = new FixedLengthStream(head.length + length + tail.length);
   const w = writable.getWriter(), r = body.getReader();
-  // Primi byte: l'intestazione di un file cifrato con la password
-  const first = new Uint8Array(PP_HEADER);
+  // Primi byte: l'intestazione di un file cifrato con la chiave di questo utente
+  const first = new Uint8Array(HEADER);
   let got = 0;
   const pending = [];
-  while (got < PP_HEADER) {
+  while (got < HEADER) {
     const { done, value } = await r.read();
     if (done) break;
     pending.push(value);
-    const take = value.subarray(0, PP_HEADER - got);
+    const take = value.subarray(0, HEADER - got);
     first.set(take, got);
     got += take.length;
   }
-  if (got < PP_HEADER || !isPasswordFile(first)) {
+  if (got < HEADER || length < HEADER + 16 + PP_HEADER || !isFileFor(first, keyId, U_MAGIC)) {
     r.cancel().catch(() => {});
     throw Object.assign(new Error("not-encrypted"), { status: 400 });
   }
@@ -421,14 +422,17 @@ async function onPhoto(msg, image, u, env, page) {
   await setUser(env, u.id, "ack_id = ?", ack.message_id);
 }
 
-// Un file inoltrato: se è un file dei progressi cifrato per questo utente, si riparte da lì
+// Un file inoltrato: se è un file dei progressi cifrato per questo utente, si riparte da lì. Valgono anche quelli
+// salvati prima del livello per utente (solo password, FPP1) e quelli della versione di prima (FPE1)
 async function onDocument(msg, u, env, page) {
   const doc = msg.document;
   if (!doc.file_size || doc.file_size > MAX_FILE) return send(env, u.id, "Questo file non lo posso usare.");
   const { id } = await fileKey(env.MASTER_KEY, u.id);
   let head = null;
   try { head = await fileHead(env, doc.file_id, PP_HEADER); } catch { /* non si scarica */ }
-  if (!isPasswordFile(head) && !isFileFor(head, id)) return send(env, u.id, "Questo non è un file dei progressi. Per ripartire da un salvataggio vecchio, inoltrami uno dei file che ti ho mandato io.");
+  const mine = isFileFor(head, id, U_MAGIC) || isPasswordFile(head) || isFileFor(head, id);
+  if (!mine && isUserFile(head)) return send(env, u.id, "Questo file dei progressi l'ha salvato un'altra persona: si apre solo dalla sua chat col bot.");
+  if (!mine) return send(env, u.id, "Questo non è un file dei progressi. Per ripartire da un salvataggio vecchio, inoltrami uno dei file che ti ho mandato io.");
   await setUser(env, u.id, "last_json = ?, last_msg = ?", doc.file_id, msg.message_id);
   return send(env, u.id, "Riparto da questo file dei progressi: tocca <b>Apri FitProgress</b>.", page ? { reply_markup: { inline_keyboard: [[openButton(page)]] } } : {});
 }
@@ -607,8 +611,9 @@ function cleanGuide(s) {
 const IMAGE_TYPES = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", heic: "image/heic", heif: "image/heif" };
 
 // Entrare dalla pagina aperta dal bot: dati firmati da Telegram e accesso già fatto nel bot (password scritta una
-// volta in chat), niente altro. Risponde una sessione breve e la password con cui la pagina cifra il file dei
-// progressi (per ora la stessa per tutti i tester: vedi APPUNTI.md). fileKey: solo per i file della versione di prima
+// volta in chat), niente altro. Risponde una sessione breve, la password con cui la pagina cifra il file dei
+// progressi (per ora la stessa per tutti i tester: vedi APPUNTI.md) e la chiave di questo utente (fileKey, dal suo
+// ID e da MASTER_KEY) col suo id: il secondo livello del file nella chat (FPU1), e i file della versione di prima
 async function login(request, env) {
   if (request.method !== "POST") return json({ error: "missing" }, 404);
   const auth = request.headers.get("Authorization") || "";
@@ -622,7 +627,7 @@ async function login(request, env) {
   const now = Date.now(), token = newToken();
   await env.DB.prepare("INSERT INTO sessions (token_hash, user_id, created_at, last_at) VALUES (?, ?, ?, ?)").bind(await tokenHash(token), u.id, now, now).run();
   const fk = await fileKey(env.MASTER_KEY, u.id);
-  return json({ token, code: env.ACCESS_CODE, fileKey: b64u(fk.raw) });
+  return json({ token, code: env.ACCESS_CODE, fileKey: b64u(fk.raw), fileKeyId: b64u(fk.id) });
 }
 
 // La piattaforma (fuori da Telegram) controlla la password all'apertura: risponde solo se è giusta. Da qualunque
@@ -702,7 +707,7 @@ async function api(request, env, url) {
     const day = localDate(Date.now(), tz(env));
     const caption = `💾 Progressi del ${day.split("-").reverse().join("/")}${note ? ` · ${note}` : ""}.\nResta qui 4 ore, a meno che non tocchi «Conserva». L'ultimo salvataggio resta sempre.`;
     let sent;
-    try { sent = await sendDocumentStream(env, u.id, request.body, length, `fitprogress-${day}.fitprogress`, caption, keepMarkup(false)); } catch (e) {
+    try { sent = await sendDocumentStream(env, u.id, (await fileKey(env.MASTER_KEY, u.id)).id, request.body, length, `fitprogress-${day}.fitprogress`, caption, keepMarkup(false)); } catch (e) {
       if (e.status === 400) return json({ error: "not-encrypted" }, 400);
       throw e;
     }

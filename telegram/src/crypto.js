@@ -1,10 +1,15 @@
 // Chiavi e cifratura del bot. Tutto parte da MASTER_KEY (secret di Cloudflare, 32 byte in esadecimale):
-// per ogni utente se ne ricavano (HKDF) chiavi diverse, una per scopo.
-//   file   cifra il file dei progressi nella chat. La ricava il Worker e la dà alla pagina solo dentro una sessione:
-//          la pagina cifra e decifra da sola, il Worker il file in chiaro non lo vede mai
+// per ogni utente (il suo ID Telegram) se ne ricavano (HKDF) chiavi diverse, una per scopo.
+//   file   il secondo livello del file dei progressi nella chat (FPU1, sopra quello con la password). La ricava il
+//          Worker e la dà alla pagina solo dentro una sessione: la pagina cifra e decifra da sola, il Worker il file
+//          in chiaro non lo vede mai
 //   db     cifra quello che resta in attesa nel database (voci del diario, didascalie, guida del promemoria)
 const enc = new TextEncoder(), dec = new TextDecoder();
-export const MAGIC = enc.encode("FPE1"); // file dei progressi cifrato: FPE1 · id della chiave (8) · iv (12) · dati
+// File cifrato con la chiave dell'utente: magia (4) · id della chiave (8) · iv (12) · dati, intestazione autenticata.
+//   FPU1  adesso: dentro c'è il file cifrato con la password (FPP1)
+//   FPE1  versione di prima: dentro c'era il JSON
+export const U_MAGIC = enc.encode("FPU1");
+export const MAGIC = enc.encode("FPE1");
 export const HEADER = 4 + 8 + 12;
 
 const hexBytes = (hex) => {
@@ -59,25 +64,27 @@ export const newToken = () => b64u(crypto.getRandomValues(new Uint8Array(32)));
 export const tokenHash = async (t) => hexOf(await crypto.subtle.digest("SHA-256", enc.encode(t)));
 
 // File dei progressi cifrato con la password (lo fa la pagina): FPP1 · giri (4) · sale (16) · iv (12) · dati.
-// Il Worker la password non la usa per cifrare: controlla solo che il file sia cifrato
+// Nella chat sta dentro FPU1. Il Worker la password non la usa per cifrare: riconosce solo i file salvati prima
 export const PP_MAGIC = enc.encode("FPP1");
 export const PP_HEADER = 4 + 4 + 16 + 12;
 export const isPasswordFile = (head) => !!head && head.length >= PP_HEADER && PP_MAGIC.every((x, i) => head[i] === x);
 
-// (Versione di prima) il file inizia come un file dei progressi cifrato con la chiave di questo utente?
-export function isFileFor(head, keyId) {
-  if (!head || head.length < 12) return false;
-  for (let i = 0; i < 4; i++) if (head[i] !== MAGIC[i]) return false;
+// Il file inizia come un file cifrato con la chiave di questo utente? magic: FPU1, o FPE1 per la versione di prima
+export function isFileFor(head, keyId, magic = MAGIC) {
+  if (!head || head.length < HEADER) return false;
+  for (let i = 0; i < 4; i++) if (head[i] !== magic[i]) return false;
   let d = 0;
   for (let i = 0; i < 8; i++) d |= head[4 + i] ^ keyId[i];
   return d === 0;
 }
+// Cifrato con la chiave di un utente (FPU1), non importa di chi
+export const isUserFile = (head) => !!head && head.length >= HEADER && U_MAGIC.every((x, i) => head[i] === x);
 
 // Per i test (e uguale a quello che fa la pagina): cifra e decifra un file dei progressi
-export async function sealFile(raw, id, bytes) {
+export async function sealFile(raw, id, bytes, magic = MAGIC) {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const head = new Uint8Array(HEADER);
-  head.set(MAGIC);
+  head.set(magic);
   head.set(id, 4);
   head.set(iv, 12);
   const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: head }, await aesKey(raw), bytes));

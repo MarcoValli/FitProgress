@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { fileKey, sealText, openText, newToken, tokenHash, isFileFor, isPasswordFile, sealFile, openFile, b64u, fromB64u } from "../src/crypto.js";
+import { fileKey, sealText, openText, newToken, tokenHash, isFileFor, isUserFile, isPasswordFile, sealFile, openFile, b64u, fromB64u, U_MAGIC } from "../src/crypto.js";
 
 const master = "11".repeat(32), other = "22".repeat(32);
 const enc = new TextEncoder(), dec = new TextDecoder();
@@ -58,6 +58,24 @@ test("file cifrato con la password: il bot riconosce solo l'intestazione FPP1 in
   assert.ok(!isPasswordFile(fpe));
 });
 
+test("file della chat (FPU1): il bot lo riconosce solo per chi l'ha salvato, e si apre solo con la sua chiave", async () => {
+  const a = await fileKey(master, 42), b = await fileKey(master, 43);
+  const inner = new Uint8Array(36 + 40);
+  inner.set(enc.encode("FPP1")); // il file con la password, che resta dentro
+  const sealed = await sealFile(a.raw, a.id, inner, U_MAGIC);
+  assert.equal(dec.decode(sealed.slice(0, 4)), "FPU1");
+  assert.ok(isFileFor(sealed, a.id, U_MAGIC));
+  assert.ok(!isFileFor(sealed, b.id, U_MAGIC)); // di un altro utente
+  assert.ok(!isFileFor(sealed, a.id)); // non è la versione di prima
+  assert.ok(isUserFile(sealed));
+  assert.ok(!isPasswordFile(sealed)); // la password da sola non basta più
+  assert.ok(!isUserFile(inner));
+  assert.ok(!isFileFor(sealed.slice(0, 20), a.id, U_MAGIC)); // intestazione a metà
+  assert.deepEqual(await openFile(a.raw, sealed), inner);
+  await assert.rejects(openFile(b.raw, sealed));
+  const fpe = await sealFile(a.raw, a.id, inner);
+  assert.ok(!isFileFor(fpe, a.id, U_MAGIC) && !isUserFile(fpe));
+});
 test("MASTER_KEY sbagliata: errore", async () => {
   await assert.rejects(fileKey("corta", 1));
 });
